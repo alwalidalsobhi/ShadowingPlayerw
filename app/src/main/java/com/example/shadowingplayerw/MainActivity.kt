@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -210,12 +211,14 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
     var showTimeInputDialog by remember { mutableStateOf(false) }
     var isEditingStart by remember { mutableStateOf(true) }
 
-    LaunchedEffect(currentSegment) {
-        while (currentSegment != null) {
-            if (exoPlayer.currentPosition >= currentSegment!!.endTimeMs) {
-                exoPlayer.seekTo(currentSegment!!.startTimeMs)
+    // ⚠️ المطلوب: التحكم في التكرار من الواجهة الرئيسية
+    var isLoopingActive by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isLoopingActive, currentPlaybackPosition, sliderPosition) {
+        if (isLoopingActive) {
+            if (currentPlaybackPosition >= sliderPosition.endInclusive.toLong() || currentPlaybackPosition < sliderPosition.start.toLong()) {
+                exoPlayer.seekTo(sliderPosition.start.toLong())
             }
-            delay(50)
         }
     }
 
@@ -306,6 +309,17 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // ⚠️ المطلوب: زر التكرار بجانب الأزرار الرئيسية
+                        FilterChip(
+                            selected = isLoopingActive,
+                            onClick = { isLoopingActive = !isLoopingActive },
+                            label = { Text("تكرار", style = MaterialTheme.typography.labelMedium) },
+                            leadingIcon = if (isLoopingActive) {
+                                { Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                            } else null,
+                            modifier = Modifier.height(32.dp).padding(end = 8.dp)
+                        )
+
                         FilledTonalButton(
                             onClick = { launcher.launch("video/*") },
                             modifier = Modifier.height(32.dp).padding(end = 8.dp),
@@ -361,26 +375,19 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                             Text(text = segment.name, style = MaterialTheme.typography.bodyLarge)
                             Text(text = "${formatTime(segment.startTimeMs)} - ${formatTime(segment.endTimeMs)}", style = MaterialTheme.typography.bodySmall)
                         }
-                        if (currentSegment == segment) {
-                            IconButton(onClick = {
-                                currentSegment = null
-                                exoPlayer.pause()
-                            }) {
-                                Icon(Icons.Default.Close, "إيقاف التكرار", tint = MaterialTheme.colorScheme.error)
-                            }
-                        }
+
+                        // تم إزالة زر الـ Close (إيقاف التكرار) من هنا بناءً على الطلب
+
                         IconButton(onClick = {
-                            if (currentSegment == segment) {
-                                if (isActuallyPlaying) exoPlayer.pause() else exoPlayer.play()
-                            } else {
-                                currentSegment = segment
-                                exoPlayer.seekTo(segment.startTimeMs)
-                                exoPlayer.play()
-                            }
+                            // عند الضغط على مقطع، نقوم بتحديث السلايدر وتفعيل التكرار له
+                            sliderPosition = segment.startTimeMs.toFloat()..segment.endTimeMs.toFloat()
+                            exoPlayer.seekTo(segment.startTimeMs)
+                            isLoopingActive = true
+                            exoPlayer.play()
                         }) {
                             Icon(
                                 painter = androidx.compose.ui.res.painterResource(
-                                    id = if (currentSegment == segment && isActuallyPlaying)
+                                    id = if (isLoopingActive && currentPlaybackPosition >= segment.startTimeMs && currentPlaybackPosition <= segment.endTimeMs && isActuallyPlaying)
                                         android.R.drawable.ic_media_pause
                                     else
                                         android.R.drawable.ic_media_play
@@ -396,7 +403,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                         IconButton(onClick = {
                             segment.thumbnailPath?.let { File(it).delete() }
                             segments.remove(segment)
-                            if(currentSegment == segment) currentSegment = null
                             saveSegments()
                         }) { Icon(Icons.Default.Delete, "حذف", modifier = Modifier.size(20.dp)) }
                     }
