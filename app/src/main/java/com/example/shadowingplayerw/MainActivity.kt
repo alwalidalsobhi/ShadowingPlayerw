@@ -12,13 +12,13 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -83,13 +84,12 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
         }
     }
 
-    // منطق وضع الدقة العالية (ثانية واحدة)
     var isPrecisionMode by remember { mutableStateOf(false) }
     var lastInteractionTime by remember { mutableLongStateOf(0L) }
 
     LaunchedEffect(lastInteractionTime) {
         if (lastInteractionTime > 0) {
-            delay(2000) // الانتظار لمدة ثانيتين
+            delay(2000)
             isPrecisionMode = true
         }
     }
@@ -120,6 +120,9 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
     var tempSegmentName by remember { mutableStateOf("") }
     var segmentToEdit by remember { mutableStateOf<VideoSegment?>(null) }
 
+    var showManualStartDialog by remember { mutableStateOf(false) }
+    var showManualEndDialog by remember { mutableStateOf(false) }
+
     LaunchedEffect(currentSegment) {
         while (currentSegment != null) {
             if (exoPlayer.currentPosition >= currentSegment!!.endTimeMs) {
@@ -141,7 +144,6 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // منطقة الفيديو مع عرض التوقيت الحالي
         Box(modifier = Modifier.fillMaxWidth().height(200.dp)) {
             AndroidView(
                 factory = { PlayerView(it).apply { player = exoPlayer; useController = true } },
@@ -149,22 +151,17 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
             )
 
             if (selectedVideoUri != null) {
-                // عرض التوقيت الحالي للقطة فوق الفيديو
                 Surface(
                     color = if (isPrecisionMode) MaterialTheme.colorScheme.error.copy(alpha = 0.8f) else Color.Black.copy(alpha = 0.6f),
                     shape = MaterialTheme.shapes.small,
                     modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
                 ) {
-                    Row(
+                    Text(
+                        text = formatTime(currentPlaybackPosition),
+                        color = Color.White,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = formatTime(currentPlaybackPosition),
-                            color = Color.White,
-                            style = MaterialTheme.typography.labelLarge
-                        )
-                    }
+                        style = MaterialTheme.typography.labelLarge
+                    )
                 }
             }
         }
@@ -182,14 +179,12 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
                         value = sliderPosition,
                         onValueChange = { newRange ->
                             lastInteractionTime = System.currentTimeMillis()
-
                             var finalRange = newRange
                             if (isPrecisionMode) {
                                 val snappedStart = (newRange.start / 1000f).roundToLong() * 1000f
                                 val snappedEnd = (newRange.endInclusive / 1000f).roundToLong() * 1000f
                                 finalRange = snappedStart..snappedEnd
                             }
-
                             if (finalRange.start != sliderPosition.start) {
                                 exoPlayer.seekTo(finalRange.start.toLong())
                             } else if (finalRange.endInclusive != sliderPosition.endInclusive) {
@@ -215,16 +210,18 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
                             val newStart = (sliderPosition.start - 50f).coerceAtLeast(0f)
                             sliderPosition = newStart..sliderPosition.endInclusive
                             exoPlayer.seekTo(newStart.toLong())
-                        }) { Icon(Icons.Default.KeyboardArrowLeft, "نقص") }
+                        }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "نقص") }
 
-                        Text(formatTime(sliderPosition.start.toLong()), style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { showManualStartDialog = true }, contentPadding = PaddingValues(0.dp)) {
+                            Text(formatTime(sliderPosition.start.toLong()), style = MaterialTheme.typography.bodySmall)
+                        }
 
                         IconButton(onClick = {
                             isPrecisionMode = false
                             val newStart = (sliderPosition.start + 50f).coerceAtMost(sliderPosition.endInclusive - 50f)
                             sliderPosition = newStart..sliderPosition.endInclusive
                             exoPlayer.seekTo(newStart.toLong())
-                        }) { Icon(Icons.Default.KeyboardArrowRight, "زيادة") }
+                        }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "زيادة") }
                     }
 
                     Button(onClick = { isPrecisionMode = !isPrecisionMode }) {
@@ -237,16 +234,18 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
                             val newEnd = (sliderPosition.endInclusive - 50f).coerceAtLeast(sliderPosition.start + 50f)
                             sliderPosition = sliderPosition.start..newEnd
                             exoPlayer.seekTo(newEnd.toLong())
-                        }) { Icon(Icons.Default.KeyboardArrowLeft, "نقص") }
+                        }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "نقص") }
 
-                        Text(formatTime(sliderPosition.endInclusive.toLong()), style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { showManualEndDialog = true }, contentPadding = PaddingValues(0.dp)) {
+                            Text(formatTime(sliderPosition.endInclusive.toLong()), style = MaterialTheme.typography.bodySmall)
+                        }
 
                         IconButton(onClick = {
                             isPrecisionMode = false
                             val newEnd = (sliderPosition.endInclusive + 50f).coerceAtMost(videoDuration.toFloat())
                             sliderPosition = sliderPosition.start..newEnd
                             exoPlayer.seekTo(newEnd.toLong())
-                        }) { Icon(Icons.Default.KeyboardArrowRight, "زيادة") }
+                        }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "زيادة") }
                     }
                 }
 
@@ -306,9 +305,7 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
         AlertDialog(
             onDismissRequest = { showNamingDialog = false; segmentToEdit = null },
             title = { Text(if (segmentToEdit == null) "تسمية المقطع" else "تعديل الاسم") },
-            text = {
-                TextField(value = tempSegmentName, onValueChange = { tempSegmentName = it }, label = { Text("اسم المقطع") })
-            },
+            text = { TextField(value = tempSegmentName, onValueChange = { tempSegmentName = it }, label = { Text("اسم المقطع") }) },
             confirmButton = {
                 Button(onClick = {
                     if (segmentToEdit == null) {
@@ -324,7 +321,63 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
         )
     }
 
+    if (showManualStartDialog) {
+        ManualTimeInputDialog(
+            currentValue = sliderPosition.start.toLong(),
+            onDismiss = { showManualStartDialog = false },
+            onConfirm = { newTime ->
+                val validatedTime = newTime.coerceIn(0L, sliderPosition.endInclusive.toLong() - 100L)
+                sliderPosition = validatedTime.toFloat()..sliderPosition.endInclusive
+                exoPlayer.seekTo(validatedTime)
+                showManualStartDialog = false
+            },
+            title = "تعديل وقت البداية (ms)"
+        )
+    }
+
+    if (showManualEndDialog) {
+        ManualTimeInputDialog(
+            currentValue = sliderPosition.endInclusive.toLong(),
+            onDismiss = { showManualEndDialog = false },
+            onConfirm = { newTime ->
+                val validatedTime = newTime.coerceIn(sliderPosition.start.toLong() + 100L, videoDuration)
+                sliderPosition = sliderPosition.start..validatedTime.toFloat()
+                exoPlayer.seekTo(validatedTime)
+                showManualEndDialog = false
+            },
+            title = "تعديل وقت النهاية (ms)"
+        )
+    }
+
     DisposableEffect(Unit) { onDispose { exoPlayer.release() } }
+}
+
+@Composable
+fun ManualTimeInputDialog(
+    currentValue: Long,
+    onDismiss: () -> Unit,
+    onConfirm: (Long) -> Unit,
+    title: String
+) {
+    var textValue by remember { mutableStateOf(currentValue.toString()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            TextField(
+                value = textValue,
+                onValueChange = { if (it.all { char -> char.isDigit() }) textValue = it },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                label = { Text("أدخل القيمة بالملي ثانية") }
+            )
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(textValue.toLongOrNull() ?: currentValue) }) { Text("تطبيق") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("إلغاء") }
+        }
+    )
 }
 
 @Composable
