@@ -1,5 +1,6 @@
 package com.example.shadowingplayerw
 
+import android.content.Context
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -14,12 +15,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Close // أيقونة إيقاف التكرار
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,7 +38,12 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.example.shadowingplayerw.ui.theme.ShadowingPlayerWTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
@@ -52,6 +58,27 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+        }
+    }
+}
+
+// دالة لنفس ملف الفيديو إلى مساحة التخزين الخاصة بالتطبيق
+suspend fun copyVideoToInternalStorage(context: Context, sourceUri: Uri): Uri? {
+    return withContext(Dispatchers.IO) {
+        try {
+            val contentResolver = context.contentResolver
+            val fileName = "app_video_${System.currentTimeMillis()}.mp4"
+            val destinationFile = File(context.filesDir, fileName)
+
+            contentResolver.openInputStream(sourceUri)?.use { inputStream ->
+                FileOutputStream(destinationFile).use { outputStream ->
+                    inputStream.copyTo(outputStream)
+                }
+            }
+            Uri.fromFile(destinationFile)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
         }
     }
 }
@@ -75,10 +102,12 @@ fun timeToMs(min: String, sec: String, msPart: String): Long {
 @Composable
 fun ShadowingScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var selectedVideoUri by remember { mutableStateOf<Uri?>(null) }
     var videoDuration by remember { mutableLongStateOf(0L) }
     var currentPlaybackPosition by remember { mutableLongStateOf(0L) }
     var isActuallyPlaying by remember { mutableStateOf(false) }
+    var isCopying by remember { mutableStateOf(false) }
 
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
@@ -109,7 +138,16 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
 
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? -> selectedVideoUri = uri }
+    ) { uri: Uri? ->
+        uri?.let { sourceUri ->
+            isCopying = true
+            scope.launch {
+                val internalUri = copyVideoToInternalStorage(context, sourceUri)
+                selectedVideoUri = internalUri
+                isCopying = false
+            }
+        }
+    }
 
     val segments = remember { mutableStateListOf<VideoSegment>() }
     var currentSegment by remember { mutableStateOf<VideoSegment?>(null) }
@@ -136,6 +174,13 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                 factory = { PlayerView(it).apply { player = exoPlayer; useController = true } },
                 modifier = Modifier.fillMaxSize()
             )
+
+            if (isCopying) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                }
+            }
+
             if (selectedVideoUri != null) {
                 Surface(
                     color = Color.Black.copy(alpha = 0.6f),
@@ -151,8 +196,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                 }
             }
         }
-
-        // تم حذف الصف القديم لزر تبديل الفيديو المنفرد هنا
 
         if (selectedVideoUri != null && videoDuration > 0) {
             Card(
@@ -187,7 +230,7 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                                 val newStart = (sliderPosition.start - 100f).coerceAtLeast(0f)
                                 sliderPosition = newStart..sliderPosition.endInclusive
                                 exoPlayer.seekTo(newStart.toLong())
-                            }) { Icon(Icons.Default.KeyboardArrowLeft, "نقص", modifier = Modifier.size(20.dp)) }
+                            }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "نقص", modifier = Modifier.size(20.dp)) }
 
                             TextButton(onClick = { isEditingStart = true; showTimeInputDialog = true }) {
                                 Text(formatTime(sliderPosition.start.toLong()), style = MaterialTheme.typography.bodySmall)
@@ -197,7 +240,7 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                                 val newStart = (sliderPosition.start + 100f).coerceAtMost(sliderPosition.endInclusive - 100f)
                                 sliderPosition = newStart..sliderPosition.endInclusive
                                 exoPlayer.seekTo(newStart.toLong())
-                            }) { Icon(Icons.Default.KeyboardArrowRight, "زيادة", modifier = Modifier.size(20.dp)) }
+                            }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "زيادة", modifier = Modifier.size(20.dp)) }
                         }
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -205,7 +248,7 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                                 val newEnd = (sliderPosition.endInclusive - 100f).coerceAtLeast(sliderPosition.start + 100f)
                                 sliderPosition = sliderPosition.start..newEnd
                                 exoPlayer.seekTo(newEnd.toLong())
-                            }) { Icon(Icons.Default.KeyboardArrowLeft, "نقص", modifier = Modifier.size(20.dp)) }
+                            }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "نقص", modifier = Modifier.size(20.dp)) }
 
                             TextButton(onClick = { isEditingStart = false; showTimeInputDialog = true }) {
                                 Text(formatTime(sliderPosition.endInclusive.toLong()), style = MaterialTheme.typography.bodySmall)
@@ -215,11 +258,10 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                                 val newEnd = (sliderPosition.endInclusive + 100f).coerceAtMost(videoDuration.toFloat())
                                 sliderPosition = sliderPosition.start..newEnd
                                 exoPlayer.seekTo(newEnd.toLong())
-                            }) { Icon(Icons.Default.KeyboardArrowRight, "زيادة", modifier = Modifier.size(20.dp)) }
+                            }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "زيادة", modifier = Modifier.size(20.dp)) }
                         }
                     }
 
-                    // ⚠️ المطلوب 1: وضع تبديل الفيديو بجوار حفظ المقطع
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.End,
@@ -246,8 +288,7 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                     }
                 }
             }
-        } else if (selectedVideoUri == null) {
-            // زر فتح فيديو في حالة عدم وجود فيديو
+        } else if (selectedVideoUri == null && !isCopying) {
             Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
                 Button(onClick = { launcher.launch("video/*") }) {
                     Text("فتح فيديو من الهاتف")
@@ -271,7 +312,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                             Text(text = "${formatTime(segment.startTimeMs)} - ${formatTime(segment.endTimeMs)}", style = MaterialTheme.typography.bodySmall)
                         }
 
-                        // المطلوب 2: زر إيقاف التكرار بجوار كل مقطع
                         if (currentSegment == segment) {
                             IconButton(onClick = {
                                 currentSegment = null
@@ -314,8 +354,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                 }
             }
         }
-
-        // تم حذف زر إيقاف التكرار السفلي الكبير لكسب مساحة واستبداله بالأيقونة داخل العناصر
     }
 
     if (showTimeInputDialog) {
