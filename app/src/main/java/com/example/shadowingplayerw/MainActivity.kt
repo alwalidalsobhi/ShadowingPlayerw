@@ -19,8 +19,6 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
-// إضافة أيقونة الإيقاف المؤقت
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -49,7 +47,6 @@ class MainActivity : ComponentActivity() {
             ShadowingPlayerWTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     ShadowingScreen(
-                        name = "وليد",
                         modifier = Modifier.padding(innerPadding)
                     )
                 }
@@ -66,7 +63,6 @@ fun formatTime(ms: Long): String {
     return String.format(Locale.getDefault(), "%02d:%02d.%d", minutes, seconds, millis)
 }
 
-// دالة مساعدة لتحويل المدخلات إلى مللي ثانية
 fun timeToMs(min: String, sec: String, msPart: String): Long {
     val m = min.toLongOrNull() ?: 0L
     val s = sec.toLongOrNull() ?: 0L
@@ -76,7 +72,7 @@ fun timeToMs(min: String, sec: String, msPart: String): Long {
 
 @OptIn(UnstableApi::class)
 @Composable
-fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
+fun ShadowingScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var selectedVideoUri by remember { mutableStateOf<Uri?>(null) }
     var videoDuration by remember { mutableLongStateOf(0L) }
@@ -121,7 +117,6 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
     var tempSegmentName by remember { mutableStateOf("") }
     var segmentToEdit by remember { mutableStateOf<VideoSegment?>(null) }
 
-    // متغيرات ديالوج الوقت اليدوي
     var showTimeInputDialog by remember { mutableStateOf(false) }
     var isEditingStart by remember { mutableStateOf(true) }
 
@@ -135,17 +130,8 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
     }
 
     Column(modifier = modifier.fillMaxSize()) {
-        Greeting(name = name)
-        Button(
-            onClick = { launcher.launch("video/*") },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-        ) {
-            Text(if (selectedVideoUri == null) "اختر فيديو من الهاتف" else "تغيير الفيديو")
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Box(modifier = Modifier.fillMaxWidth().height(200.dp)) {
+        // 1. الفيديو في أعلى الصفحة مباشرة
+        Box(modifier = Modifier.fillMaxWidth().height(220.dp)) {
             AndroidView(
                 factory = { PlayerView(it).apply { player = exoPlayer; useController = true } },
                 modifier = Modifier.fillMaxSize()
@@ -166,85 +152,102 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
             }
         }
 
-        if (selectedVideoUri != null && videoDuration > 0) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(text = "الضبط الدقيق (0.1 ثانية):", style = MaterialTheme.typography.labelSmall)
-                Box(modifier = Modifier.fillMaxWidth().height(40.dp)) {
-                    RangeSlider(
-                        value = sliderPosition,
-                        onValueChange = { newRange ->
-                            if (newRange.start != sliderPosition.start) {
-                                exoPlayer.seekTo(newRange.start.toLong())
-                            } else if (newRange.endInclusive != sliderPosition.endInclusive) {
-                                exoPlayer.seekTo(newRange.endInclusive.toLong())
-                            }
-                            sliderPosition = newRange
-                        },
-                        valueRange = 0f..videoDuration.toFloat(),
-                        modifier = Modifier.fillMaxSize()
-                    )
-                    Canvas(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
-                        val progress = currentPlaybackPosition.toFloat() / videoDuration.toFloat()
-                        val xPos = size.width * progress
-                        drawLine(color = Color.Red, start = Offset(xPos, 0f), end = Offset(xPos, size.height), strokeWidth = 2.dp.toPx())
-                    }
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    // تحكم البداية
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = {
-                            val newStart = (sliderPosition.start - 100f).coerceAtLeast(0f)
-                            sliderPosition = newStart..sliderPosition.endInclusive
-                            exoPlayer.seekTo(newStart.toLong())
-                        }) { Icon(Icons.Default.KeyboardArrowLeft, "نقص") }
-
-                        TextButton(onClick = {
-                            isEditingStart = true
-                            showTimeInputDialog = true
-                        }) {
-                            Text(formatTime(sliderPosition.start.toLong()), style = MaterialTheme.typography.bodySmall)
-                        }
-
-                        IconButton(onClick = {
-                            val newStart = (sliderPosition.start + 100f).coerceAtMost(sliderPosition.endInclusive - 100f)
-                            sliderPosition = newStart..sliderPosition.endInclusive
-                            exoPlayer.seekTo(newStart.toLong())
-                        }) { Icon(Icons.Default.KeyboardArrowRight, "زيادة") }
-                    }
-
-                    // تحكم النهاية
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = {
-                            val newEnd = (sliderPosition.endInclusive - 100f).coerceAtLeast(sliderPosition.start + 100f)
-                            sliderPosition = sliderPosition.start..newEnd
-                            exoPlayer.seekTo(newEnd.toLong())
-                        }) { Icon(Icons.Default.KeyboardArrowLeft, "نقص") }
-
-                        TextButton(onClick = {
-                            isEditingStart = false
-                            showTimeInputDialog = true
-                        }) {
-                            Text(formatTime(sliderPosition.endInclusive.toLong()), style = MaterialTheme.typography.bodySmall)
-                        }
-
-                        IconButton(onClick = {
-                            val newEnd = (sliderPosition.endInclusive + 100f).coerceAtMost(videoDuration.toFloat())
-                            sliderPosition = sliderPosition.start..newEnd
-                            exoPlayer.seekTo(newEnd.toLong())
-                        }) { Icon(Icons.Default.KeyboardArrowRight, "زيادة") }
-                    }
-                }
-                Button(
-                    onClick = {
-                        tempSegmentName = "مقطع ${segments.size + 1}"
-                        showNamingDialog = true
-                    },
-                    modifier = Modifier.align(Alignment.End).padding(top = 4.dp)
-                ) { Text("حفظ المقطع") }
+        // 2. صف يحتوي على زر تصغير "تغيير الفيديو" وتنسيق M3
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(8.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FilledTonalButton(
+                onClick = { launcher.launch("video/*") },
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                modifier = Modifier.height(32.dp) // تصغير الارتفاع لكسب مساحة
+            ) {
+                Text(
+                    if (selectedVideoUri == null) "فتح فيديو" else "تبديل الفيديو",
+                    style = MaterialTheme.typography.labelMedium
+                )
             }
         }
 
-        Text(text = "قائمة التدريب:", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp))
+        if (selectedVideoUri != null && videoDuration > 0) {
+            Card(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            ) {
+                Column(modifier = Modifier.padding(8.dp)) {
+                    Text(text = "الضبط الدقيق (0.1 ثانية):", style = MaterialTheme.typography.labelSmall)
+                    Box(modifier = Modifier.fillMaxWidth().height(36.dp)) {
+                        RangeSlider(
+                            value = sliderPosition,
+                            onValueChange = { newRange ->
+                                if (newRange.start != sliderPosition.start) {
+                                    exoPlayer.seekTo(newRange.start.toLong())
+                                } else if (newRange.endInclusive != sliderPosition.endInclusive) {
+                                    exoPlayer.seekTo(newRange.endInclusive.toLong())
+                                }
+                                sliderPosition = newRange
+                            },
+                            valueRange = 0f..videoDuration.toFloat(),
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        Canvas(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
+                            val progress = currentPlaybackPosition.toFloat() / videoDuration.toFloat()
+                            val xPos = size.width * progress
+                            drawLine(color = Color.Red, start = Offset(xPos, 0f), end = Offset(xPos, size.height), strokeWidth = 2.dp.toPx())
+                        }
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = {
+                                val newStart = (sliderPosition.start - 100f).coerceAtLeast(0f)
+                                sliderPosition = newStart..sliderPosition.endInclusive
+                                exoPlayer.seekTo(newStart.toLong())
+                            }) { Icon(Icons.Default.KeyboardArrowLeft, "نقص", modifier = Modifier.size(20.dp)) }
+
+                            TextButton(onClick = { isEditingStart = true; showTimeInputDialog = true }) {
+                                Text(formatTime(sliderPosition.start.toLong()), style = MaterialTheme.typography.bodySmall)
+                            }
+
+                            IconButton(onClick = {
+                                val newStart = (sliderPosition.start + 100f).coerceAtMost(sliderPosition.endInclusive - 100f)
+                                sliderPosition = newStart..sliderPosition.endInclusive
+                                exoPlayer.seekTo(newStart.toLong())
+                            }) { Icon(Icons.Default.KeyboardArrowRight, "زيادة", modifier = Modifier.size(20.dp)) }
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = {
+                                val newEnd = (sliderPosition.endInclusive - 100f).coerceAtLeast(sliderPosition.start + 100f)
+                                sliderPosition = sliderPosition.start..newEnd
+                                exoPlayer.seekTo(newEnd.toLong())
+                            }) { Icon(Icons.Default.KeyboardArrowLeft, "نقص", modifier = Modifier.size(20.dp)) }
+
+                            TextButton(onClick = { isEditingStart = false; showTimeInputDialog = true }) {
+                                Text(formatTime(sliderPosition.endInclusive.toLong()), style = MaterialTheme.typography.bodySmall)
+                            }
+
+                            IconButton(onClick = {
+                                val newEnd = (sliderPosition.endInclusive + 100f).coerceAtMost(videoDuration.toFloat())
+                                sliderPosition = sliderPosition.start..newEnd
+                                exoPlayer.seekTo(newEnd.toLong())
+                            }) { Icon(Icons.Default.KeyboardArrowRight, "زيادة", modifier = Modifier.size(20.dp)) }
+                        }
+                    }
+                    Button(
+                        onClick = {
+                            tempSegmentName = "مقطع ${segments.size + 1}"
+                            showNamingDialog = true
+                        },
+                        modifier = Modifier.align(Alignment.End).height(32.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                    ) { Text("حفظ المقطع", style = MaterialTheme.typography.labelMedium) }
+                }
+            }
+        }
+
+        Text(text = "قائمة التدريب:", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+
         LazyColumn(modifier = Modifier.weight(1f)) {
             items(segments) { segment ->
                 Card(
@@ -259,14 +262,9 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
                             Text(text = "${formatTime(segment.startTimeMs)} - ${formatTime(segment.endTimeMs)}", style = MaterialTheme.typography.bodySmall)
                         }
 
-                        // الإضافة التكميلية: زر تشغيل/إيقاف مؤقت موحد
                         IconButton(onClick = {
                             if (currentSegment == segment) {
-                                if (isActuallyPlaying) {
-                                    exoPlayer.pause()
-                                } else {
-                                    exoPlayer.play()
-                                }
+                                if (isActuallyPlaying) exoPlayer.pause() else exoPlayer.play()
                             } else {
                                 currentSegment = segment
                                 exoPlayer.seekTo(segment.startTimeMs)
@@ -274,13 +272,13 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
                             }
                         }) {
                             Icon(
-                                imageVector = if (currentSegment == segment && isActuallyPlaying) {
-                                    // نستخدم أيقونة تدل على الإيقاف المؤقت (هنا استبدلت منطقياً بالـ PlayArrow في حالة عدم التشغيل)
-                                    Icons.Default.Refresh
-                                } else {
-                                    Icons.Default.PlayArrow
-                                },
-                                contentDescription = if (currentSegment == segment && isActuallyPlaying) "إيقاف مؤقت" else "تشغيل"
+                                painter = androidx.compose.ui.res.painterResource(
+                                    id = if (currentSegment == segment && isActuallyPlaying)
+                                        android.R.drawable.ic_media_pause
+                                    else
+                                        android.R.drawable.ic_media_play
+                                ),
+                                contentDescription = "تشغيل/إيقاف"
                             )
                         }
 
@@ -288,25 +286,22 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
                             segmentToEdit = segment
                             tempSegmentName = segment.name
                             showNamingDialog = true
-                        }) { Icon(Icons.Default.Edit, "تعديل الاسم") }
+                        }) { Icon(Icons.Default.Edit, "تعديل", modifier = Modifier.size(20.dp)) }
                         IconButton(onClick = {
                             segments.remove(segment)
                             if(currentSegment == segment) currentSegment = null
-                        }) { Icon(Icons.Default.Delete, "حذف") }
+                        }) { Icon(Icons.Default.Delete, "حذف", modifier = Modifier.size(20.dp)) }
                     }
                 }
             }
         }
-        Button(
-            onClick = {
-                currentSegment = null
-                exoPlayer.pause()
-            },
-            modifier = Modifier.align(Alignment.CenterHorizontally).padding(16.dp)
-        ) { Text("إيقاف التكرار") }
+
+        OutlinedButton(
+            onClick = { currentSegment = null; exoPlayer.pause() },
+            modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 16.dp).height(36.dp)
+        ) { Text("إيقاف التكرار", style = MaterialTheme.typography.labelLarge) }
     }
 
-    // ديالوج إدخال الوقت يدوياً
     if (showTimeInputDialog) {
         var min by remember { mutableStateOf("0") }
         var sec by remember { mutableStateOf("0") }
@@ -385,13 +380,8 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
     DisposableEffect(Unit) { onDispose { exoPlayer.release() } }
 }
 
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(text = "مرحبا $name!", modifier = modifier.padding(16.dp))
-}
-
 @Preview(showBackground = true)
 @Composable
 fun GreetingPreview() {
-    ShadowingPlayerWTheme { Greeting("وليد") }
+    ShadowingPlayerWTheme { ShadowingScreen() }
 }
