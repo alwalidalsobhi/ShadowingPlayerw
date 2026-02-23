@@ -1,6 +1,8 @@
 package com.example.shadowingplayerw
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -10,9 +12,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.annotation.OptIn
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
@@ -20,14 +24,15 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
@@ -70,6 +75,30 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// دالة لالتقاط لقطة من الفيديو وحفظها كملف
+suspend fun captureVideoThumbnail(context: Context, videoUri: Uri, timeMs: Long): String? {
+    return withContext(Dispatchers.IO) {
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(context, videoUri)
+            val bitmap = retriever.getFrameAtTime(timeMs * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            if (bitmap != null) {
+                val fileName = "thumb_${System.currentTimeMillis()}.jpg"
+                val file = File(context.filesDir, fileName)
+                FileOutputStream(file).use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 70, out)
+                }
+                file.absolutePath
+            } else null
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        } finally {
+            retriever.release()
+        }
+    }
+}
+
 // دالة لنقل ملف الفيديو إلى مساحة التخزين الخاصة بالتطبيق
 suspend fun copyVideoToInternalStorage(context: Context, sourceUri: Uri): Uri? {
     return withContext(Dispatchers.IO) {
@@ -77,7 +106,6 @@ suspend fun copyVideoToInternalStorage(context: Context, sourceUri: Uri): Uri? {
             val contentResolver = context.contentResolver
             val fileName = "app_video_${System.currentTimeMillis()}.mp4"
             val destinationFile = File(context.filesDir, fileName)
-
             contentResolver.openInputStream(sourceUri)?.use { inputStream ->
                 FileOutputStream(destinationFile).use { outputStream ->
                     inputStream.copyTo(outputStream)
@@ -113,12 +141,9 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     val sharedPrefs = remember { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
     val gson = remember { Gson() }
-
-    // تحميل البيانات المحفوظة عند التشغيل
     var selectedVideoUri by remember {
         mutableStateOf<Uri?>(sharedPrefs.getString(KEY_VIDEO_URI, null)?.let { Uri.parse(it) })
     }
-
     val segments = remember {
         val savedSegments = sharedPrefs.getString(KEY_SEGMENTS, null)
         val list = if (savedSegments != null) {
@@ -128,7 +153,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
         mutableStateListOf<VideoSegment>().apply { addAll(list) }
     }
 
-    // دالة الحفظ التلقائي للمقاطع
     fun saveSegments() {
         sharedPrefs.edit().putString(KEY_SEGMENTS, gson.toJson(segments.toList())).apply()
     }
@@ -137,7 +161,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
     var currentPlaybackPosition by remember { mutableLongStateOf(0L) }
     var isActuallyPlaying by remember { mutableStateOf(false) }
     var isCopying by remember { mutableStateOf(false) }
-
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
             addListener(object : Player.Listener {
@@ -173,7 +196,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
             scope.launch {
                 val internalUri = copyVideoToInternalStorage(context, sourceUri)
                 selectedVideoUri = internalUri
-                // حفظ الرابط الجديد في الإعدادات
                 sharedPrefs.edit().putString(KEY_VIDEO_URI, internalUri.toString()).apply()
                 isCopying = false
             }
@@ -185,7 +207,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
     var showNamingDialog by remember { mutableStateOf(false) }
     var tempSegmentName by remember { mutableStateOf("") }
     var segmentToEdit by remember { mutableStateOf<VideoSegment?>(null) }
-
     var showTimeInputDialog by remember { mutableStateOf(false) }
     var isEditingStart by remember { mutableStateOf(true) }
 
@@ -204,14 +225,12 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                 factory = { PlayerView(it).apply { player = exoPlayer; useController = true } },
                 modifier = Modifier.fillMaxSize()
             )
-
             if (isCopying) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                 }
             }
         }
-
         if (selectedVideoUri != null && videoDuration > 0) {
             Card(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
@@ -246,18 +265,15 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                                 sliderPosition = newStart..sliderPosition.endInclusive
                                 exoPlayer.seekTo(newStart.toLong())
                             }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "نقص", modifier = Modifier.size(20.dp)) }
-
                             TextButton(onClick = { isEditingStart = true; showTimeInputDialog = true }) {
                                 Text(formatTime(sliderPosition.start.toLong()), style = MaterialTheme.typography.bodySmall)
                             }
-
                             IconButton(onClick = {
                                 val newStart = (sliderPosition.start + 100f).coerceAtMost(sliderPosition.endInclusive - 100f)
                                 sliderPosition = newStart..sliderPosition.endInclusive
                                 exoPlayer.seekTo(newStart.toLong())
                             }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "زيادة", modifier = Modifier.size(20.dp)) }
                         }
-
                         Surface(
                             color = Color.Red.copy(alpha = 0.1f),
                             shape = MaterialTheme.shapes.extraSmall
@@ -269,18 +285,15 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                                 style = MaterialTheme.typography.labelMedium
                             )
                         }
-
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = {
                                 val newEnd = (sliderPosition.endInclusive - 100f).coerceAtLeast(sliderPosition.start + 100f)
                                 sliderPosition = sliderPosition.start..newEnd
                                 exoPlayer.seekTo(newEnd.toLong())
                             }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "نقص", modifier = Modifier.size(20.dp)) }
-
                             TextButton(onClick = { isEditingStart = false; showTimeInputDialog = true }) {
                                 Text(formatTime(sliderPosition.endInclusive.toLong()), style = MaterialTheme.typography.bodySmall)
                             }
-
                             IconButton(onClick = {
                                 val newEnd = (sliderPosition.endInclusive + 100f).coerceAtMost(videoDuration.toFloat())
                                 sliderPosition = sliderPosition.start..newEnd
@@ -288,7 +301,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                             }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "زيادة", modifier = Modifier.size(20.dp)) }
                         }
                     }
-
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.End,
@@ -301,7 +313,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                         ) {
                             Text("تبديل الفيديو", style = MaterialTheme.typography.labelMedium)
                         }
-
                         Button(
                             onClick = {
                                 tempSegmentName = "مقطع ${segments.size + 1}"
@@ -322,9 +333,7 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                 }
             }
         }
-
         Text(text = "قائمة التدريب:", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-
         LazyColumn(modifier = Modifier.weight(1f)) {
             items(segments) { segment ->
                 Card(
@@ -334,11 +343,24 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                     )
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
+                        segment.thumbnailPath?.let { path ->
+                            val bitmap = android.graphics.BitmapFactory.decodeFile(path)
+                            if (bitmap != null) {
+                                Image(
+                                    bitmap = bitmap.asImageBitmap(),
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(60.dp)
+                                        .clip(RoundedCornerShape(8.dp)),
+                                    contentScale = ContentScale.Crop
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                            }
+                        }
                         Column(modifier = Modifier.weight(1f)) {
                             Text(text = segment.name, style = MaterialTheme.typography.bodyLarge)
                             Text(text = "${formatTime(segment.startTimeMs)} - ${formatTime(segment.endTimeMs)}", style = MaterialTheme.typography.bodySmall)
                         }
-
                         if (currentSegment == segment) {
                             IconButton(onClick = {
                                 currentSegment = null
@@ -347,7 +369,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                                 Icon(Icons.Default.Close, "إيقاف التكرار", tint = MaterialTheme.colorScheme.error)
                             }
                         }
-
                         IconButton(onClick = {
                             if (currentSegment == segment) {
                                 if (isActuallyPlaying) exoPlayer.pause() else exoPlayer.play()
@@ -367,28 +388,26 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                                 contentDescription = "تشغيل/إيقاف"
                             )
                         }
-
                         IconButton(onClick = {
                             segmentToEdit = segment
                             tempSegmentName = segment.name
                             showNamingDialog = true
                         }) { Icon(Icons.Default.Edit, "تعديل", modifier = Modifier.size(20.dp)) }
                         IconButton(onClick = {
+                            segment.thumbnailPath?.let { File(it).delete() }
                             segments.remove(segment)
                             if(currentSegment == segment) currentSegment = null
-                            saveSegments() // حفظ بعد الحذف
+                            saveSegments()
                         }) { Icon(Icons.Default.Delete, "حذف", modifier = Modifier.size(20.dp)) }
                     }
                 }
             }
         }
     }
-
     if (showTimeInputDialog) {
         var min by remember { mutableStateOf("0") }
         var sec by remember { mutableStateOf("0") }
         var msp by remember { mutableStateOf("0") }
-
         AlertDialog(
             onDismissRequest = { showTimeInputDialog = false },
             title = { Text(if (isEditingStart) "ضبط وقت البداية" else "ضبط وقت النهاية") },
@@ -437,7 +456,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
             }
         )
     }
-
     if (showNamingDialog) {
         AlertDialog(
             onDismissRequest = { showNamingDialog = false; segmentToEdit = null },
@@ -447,15 +465,24 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
             },
             confirmButton = {
                 Button(onClick = {
-                    if (segmentToEdit == null) {
-                        segments.add(VideoSegment(segments.size + 1, tempSegmentName, sliderPosition.start.toLong(), sliderPosition.endInclusive.toLong()))
-                    } else {
-                        val index = segments.indexOf(segmentToEdit)
-                        if (index != -1) segments[index] = segmentToEdit!!.copy(name = tempSegmentName)
+                    scope.launch {
+                        if (segmentToEdit == null) {
+                            val thumbPath = selectedVideoUri?.let { captureVideoThumbnail(context, it, sliderPosition.start.toLong()) }
+                            segments.add(VideoSegment(
+                                id = segments.size + 1,
+                                name = tempSegmentName,
+                                startTimeMs = sliderPosition.start.toLong(),
+                                endTimeMs = sliderPosition.endInclusive.toLong(),
+                                thumbnailPath = thumbPath
+                            ))
+                        } else {
+                            val index = segments.indexOf(segmentToEdit)
+                            if (index != -1) segments[index] = segmentToEdit!!.copy(name = tempSegmentName)
+                        }
+                        saveSegments()
+                        showNamingDialog = false
+                        segmentToEdit = null
                     }
-                    saveSegments() // حفظ بعد الإضافة أو التعديل
-                    showNamingDialog = false
-                    segmentToEdit = null
                 }) { Text("حفظ") }
             }
         )
