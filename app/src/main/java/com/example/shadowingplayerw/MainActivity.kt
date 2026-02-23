@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -38,6 +39,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.example.shadowingplayerw.ui.theme.ShadowingPlayerWTheme
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -45,6 +48,11 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
+
+// Constants for Persistence
+private const val PREFS_NAME = "shadowing_prefs"
+private const val KEY_VIDEO_URI = "selected_video_uri"
+private const val KEY_SEGMENTS = "video_segments"
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -62,7 +70,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// دالة لنفس ملف الفيديو إلى مساحة التخزين الخاصة بالتطبيق
+// دالة لنقل ملف الفيديو إلى مساحة التخزين الخاصة بالتطبيق
 suspend fun copyVideoToInternalStorage(context: Context, sourceUri: Uri): Uri? {
     return withContext(Dispatchers.IO) {
         try {
@@ -103,7 +111,28 @@ fun timeToMs(min: String, sec: String, msPart: String): Long {
 fun ShadowingScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var selectedVideoUri by remember { mutableStateOf<Uri?>(null) }
+    val sharedPrefs = remember { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
+    val gson = remember { Gson() }
+
+    // تحميل البيانات المحفوظة عند التشغيل
+    var selectedVideoUri by remember {
+        mutableStateOf<Uri?>(sharedPrefs.getString(KEY_VIDEO_URI, null)?.let { Uri.parse(it) })
+    }
+
+    val segments = remember {
+        val savedSegments = sharedPrefs.getString(KEY_SEGMENTS, null)
+        val list = if (savedSegments != null) {
+            val type = object : TypeToken<List<VideoSegment>>() {}.type
+            gson.fromJson<List<VideoSegment>>(savedSegments, type)
+        } else emptyList()
+        mutableStateListOf<VideoSegment>().apply { addAll(list) }
+    }
+
+    // دالة الحفظ التلقائي للمقاطع
+    fun saveSegments() {
+        sharedPrefs.edit().putString(KEY_SEGMENTS, gson.toJson(segments.toList())).apply()
+    }
+
     var videoDuration by remember { mutableLongStateOf(0L) }
     var currentPlaybackPosition by remember { mutableLongStateOf(0L) }
     var isActuallyPlaying by remember { mutableStateOf(false) }
@@ -144,12 +173,13 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
             scope.launch {
                 val internalUri = copyVideoToInternalStorage(context, sourceUri)
                 selectedVideoUri = internalUri
+                // حفظ الرابط الجديد في الإعدادات
+                sharedPrefs.edit().putString(KEY_VIDEO_URI, internalUri.toString()).apply()
                 isCopying = false
             }
         }
     }
 
-    val segments = remember { mutableStateListOf<VideoSegment>() }
     var currentSegment by remember { mutableStateOf<VideoSegment?>(null) }
     var sliderPosition by remember { mutableStateOf(0f..1000f) }
     var showNamingDialog by remember { mutableStateOf(false) }
@@ -178,21 +208,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
             if (isCopying) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                }
-            }
-
-            if (selectedVideoUri != null) {
-                Surface(
-                    color = Color.Black.copy(alpha = 0.6f),
-                    shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
-                ) {
-                    Text(
-                        text = formatTime(currentPlaybackPosition),
-                        color = Color.White,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelLarge
-                    )
                 }
             }
         }
@@ -224,7 +239,7 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                             drawLine(color = Color.Red, start = Offset(xPos, 0f), end = Offset(xPos, size.height), strokeWidth = 2.dp.toPx())
                         }
                     }
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = {
                                 val newStart = (sliderPosition.start - 100f).coerceAtLeast(0f)
@@ -241,6 +256,18 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                                 sliderPosition = newStart..sliderPosition.endInclusive
                                 exoPlayer.seekTo(newStart.toLong())
                             }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "زيادة", modifier = Modifier.size(20.dp)) }
+                        }
+
+                        Surface(
+                            color = Color.Red.copy(alpha = 0.1f),
+                            shape = MaterialTheme.shapes.extraSmall
+                        ) {
+                            Text(
+                                text = formatTime(currentPlaybackPosition),
+                                color = Color.Red,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelMedium
+                            )
                         }
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -349,6 +376,7 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                         IconButton(onClick = {
                             segments.remove(segment)
                             if(currentSegment == segment) currentSegment = null
+                            saveSegments() // حفظ بعد الحذف
                         }) { Icon(Icons.Default.Delete, "حذف", modifier = Modifier.size(20.dp)) }
                     }
                 }
@@ -425,6 +453,7 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                         val index = segments.indexOf(segmentToEdit)
                         if (index != -1) segments[index] = segmentToEdit!!.copy(name = tempSegmentName)
                     }
+                    saveSegments() // حفظ بعد الإضافة أو التعديل
                     showNamingDialog = false
                     segmentToEdit = null
                 }) { Text("حفظ") }
