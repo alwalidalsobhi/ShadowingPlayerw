@@ -3,6 +3,8 @@ package com.example.shadowingplayerw
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.annotation.OptIn
@@ -18,6 +20,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
@@ -31,7 +34,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             ShadowingPlayerWTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    // الجزء الأصلي مع تمرير الإضافات الجديدة
+                    // الجزء الأصلي
                     ShadowingScreen(
                         name = "وليد",
                         modifier = Modifier.padding(innerPadding)
@@ -47,27 +50,46 @@ class MainActivity : ComponentActivity() {
 fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
 
+    // حالة لتخزين مسار الفيديو المختار من الهاتف
+    var selectedVideoUri by remember { mutableStateOf<Uri?>(null) }
+    var videoDuration by remember { mutableLongStateOf(0L) }
+
     // إعداد المشغل
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
-            // ملاحظة: تأكد من وجود فيديو باسم video_source في res/raw
-            val videoUri = Uri.parse("android.resource://${context.packageName}/raw/video_source")
-            setMediaItem(MediaItem.fromUri(videoUri))
-            prepare()
+            addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(state: Int) {
+                    if (state == Player.STATE_READY) {
+                        videoDuration = duration
+                    }
+                }
+            })
         }
+    }
+
+    // تحديث الفيديو في المشغل عند اختيار ملف جديد
+    LaunchedEffect(selectedVideoUri) {
+        selectedVideoUri?.let { uri ->
+            exoPlayer.setMediaItem(MediaItem.fromUri(uri))
+            exoPlayer.prepare()
+        }
+    }
+
+    // لاونشر لفتح مستعرض الملفات واختيار فيديو
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        selectedVideoUri = uri
     }
 
     // إدارة حالة الفواصل
     var currentSegment by remember { mutableStateOf<VideoSegment?>(null) }
-    val segments = remember {
-        mutableStateListOf(
-            VideoSegment(1, "الترحيب", 0, 5000),
-            VideoSegment(2, "الجملة الأولى", 5000, 10000),
-            VideoSegment(3, "الجملة الثانية", 10000, 15000)
-        )
-    }
+    val segments = remember { mutableStateListOf<VideoSegment>() }
 
-    // منطق التكرار (Looping) للفاصل المحدد
+    // حالة المؤشر (Range Slider) لتحديد المقطع
+    var sliderPosition by remember { mutableStateOf(0f..1000f) }
+
+    // منطق التكرار (Looping)
     LaunchedEffect(currentSegment) {
         while (currentSegment != null) {
             if (exoPlayer.currentPosition >= currentSegment!!.endTimeMs) {
@@ -78,8 +100,16 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
     }
 
     Column(modifier = modifier.fillMaxSize()) {
-        // نداء الدالة الأصلية للحفاظ على الهيكل
+        // نداء الدالة الأصلية
         Greeting(name = name)
+
+        // زر اختيار الفيديو من الهاتف
+        Button(
+            onClick = { launcher.launch("video/*") },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+        ) {
+            Text(if (selectedVideoUri == null) "اختر فيديو من الهاتف" else "تغيير الفيديو")
+        }
 
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -96,24 +126,61 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
                 .height(250.dp)
         )
 
+        // مؤشر تحديد المقطع (Range Slider)
+        if (selectedVideoUri != null && videoDuration > 0) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(text = "تحديد نطاق المقطع (ثواني):", style = MaterialTheme.typography.labelMedium)
+                RangeSlider(
+                    value = sliderPosition,
+                    onValueChange = { sliderPosition = it },
+                    valueRange = 0f..videoDuration.toFloat(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("${(sliderPosition.start / 1000).toInt()}s")
+                    Text("${(sliderPosition.endInclusive / 1000).toInt()}s")
+                }
+                Button(
+                    onClick = {
+                        val newSegment = VideoSegment(
+                            id = segments.size + 1,
+                            name = "مقطع ${segments.size + 1}",
+                            startTimeMs = sliderPosition.start.toLong(),
+                            endTimeMs = sliderPosition.endInclusive.toLong()
+                        )
+                        segments.add(newSegment)
+                    },
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text("إضافة مقطع")
+                }
+            }
+        }
+
         Text(
-            text = "الفواصل الزمنية (تكرار المقطع):",
+            text = "الفواصل الزمنية المحددة:",
             style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier.padding(horizontal = 16.dp)
         )
 
-        // قائمة الفواصل - تم استخدام الـ weight المدمج مباشرة هنا لحل المشكلة
+        // قائمة الفواصل
         LazyColumn(modifier = Modifier.weight(1f)) {
             items(segments) { segment ->
                 Button(
                     onClick = {
-                        currentSegment = segment
-                        exoPlayer.seekTo(segment.startTimeMs)
-                        exoPlayer.play()
+                        if (selectedVideoUri != null) {
+                            currentSegment = segment
+                            exoPlayer.seekTo(segment.startTimeMs)
+                            exoPlayer.play()
+                        }
                     },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 4.dp),
+                    enabled = selectedVideoUri != null,
                     colors = if (currentSegment == segment)
                         ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                     else ButtonDefaults.buttonColors()
@@ -123,18 +190,15 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
             }
         }
 
-        // زر إيقاف التكرار
+        // إيقاف التكرار
         Button(
             onClick = { currentSegment = null },
-            modifier = Modifier
-                .align(Alignment.CenterHorizontally)
-                .padding(16.dp)
+            modifier = Modifier.align(Alignment.CenterHorizontally).padding(16.dp)
         ) {
-            Text("إيقاف التكرار والتشغيل العادي")
+            Text("إيقاف التكرار")
         }
     }
 
-    // تنظيف الذاكرة عند إغلاق التطبيق
     DisposableEffect(Unit) {
         onDispose { exoPlayer.release() }
     }
@@ -155,4 +219,3 @@ fun GreetingPreview() {
         Greeting("وليد")
     }
 }
-
