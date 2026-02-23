@@ -59,8 +59,8 @@ fun formatTime(ms: Long): String {
     val totalSeconds = ms / 1000
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
-    val millis = (ms % 1000) / 100
-    return String.format(Locale.getDefault(), "%02d:%02d.%d", minutes, seconds, millis)
+    val millis = (ms % 1000) / 10 // عرض تفصيلي أكثر (جزء من مئة)
+    return String.format(Locale.getDefault(), "%02d:%02d.%02d", minutes, seconds, millis)
 }
 
 @OptIn(UnstableApi::class)
@@ -85,7 +85,7 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
     LaunchedEffect(exoPlayer.isPlaying) {
         while (true) {
             currentPlaybackPosition = exoPlayer.currentPosition
-            delay(50)
+            delay(30) // تقليل وقت التحديث لمواكبة السرعة الجديدة
         }
     }
 
@@ -113,7 +113,7 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
             if (exoPlayer.currentPosition >= currentSegment!!.endTimeMs) {
                 exoPlayer.seekTo(currentSegment!!.startTimeMs)
             }
-            delay(50)
+            delay(30)
         }
     }
 
@@ -153,7 +153,7 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
 
         if (selectedVideoUri != null && videoDuration > 0) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(text = "الضبط الدقيق (0.1 ثانية):", style = MaterialTheme.typography.labelSmall)
+                Text(text = "الضبط الفائق (50ms لكل نقرة):", style = MaterialTheme.typography.labelSmall)
 
                 Box(modifier = Modifier.fillMaxWidth().height(40.dp)) {
                     RangeSlider(
@@ -178,38 +178,38 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
                 }
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    // تحكم البداية (استبدال Remove بـ KeyboardArrowLeft لضمان التوافق)
+                    // تحكم البداية (تعديل القفزة إلى 50ms)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = {
-                            val newStart = (sliderPosition.start - 100f).coerceAtLeast(0f)
+                            val newStart = (sliderPosition.start - 50f).coerceAtLeast(0f)
                             sliderPosition = newStart..sliderPosition.endInclusive
                             exoPlayer.seekTo(newStart.toLong())
-                        }) { Icon(Icons.Default.KeyboardArrowLeft, "نقص") }
+                        }) { Icon(Icons.Default.KeyboardArrowLeft, "نقص 50ms") }
 
                         Text(formatTime(sliderPosition.start.toLong()), style = MaterialTheme.typography.bodySmall)
 
                         IconButton(onClick = {
-                            val newStart = (sliderPosition.start + 100f).coerceAtMost(sliderPosition.endInclusive - 100f)
+                            val newStart = (sliderPosition.start + 50f).coerceAtMost(sliderPosition.endInclusive - 50f)
                             sliderPosition = newStart..sliderPosition.endInclusive
                             exoPlayer.seekTo(newStart.toLong())
-                        }) { Icon(Icons.Default.KeyboardArrowRight, "زيادة") }
+                        }) { Icon(Icons.Default.KeyboardArrowRight, "زيادة 50ms") }
                     }
 
-                    // تحكم النهاية
+                    // تحكم النهاية (تعديل القفزة إلى 50ms)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = {
-                            val newEnd = (sliderPosition.endInclusive - 100f).coerceAtLeast(sliderPosition.start + 100f)
+                            val newEnd = (sliderPosition.endInclusive - 50f).coerceAtLeast(sliderPosition.start + 50f)
                             sliderPosition = sliderPosition.start..newEnd
                             exoPlayer.seekTo(newEnd.toLong())
-                        }) { Icon(Icons.Default.KeyboardArrowLeft, "نقص") }
+                        }) { Icon(Icons.Default.KeyboardArrowLeft, "نقص 50ms") }
 
                         Text(formatTime(sliderPosition.endInclusive.toLong()), style = MaterialTheme.typography.bodySmall)
 
                         IconButton(onClick = {
-                            val newEnd = (sliderPosition.endInclusive + 100f).coerceAtMost(videoDuration.toFloat())
+                            val newEnd = (sliderPosition.endInclusive + 50f).coerceAtMost(videoDuration.toFloat())
                             sliderPosition = sliderPosition.start..newEnd
                             exoPlayer.seekTo(newEnd.toLong())
-                        }) { Icon(Icons.Default.KeyboardArrowRight, "زيادة") }
+                        }) { Icon(Icons.Default.KeyboardArrowRight, "زيادة 50ms") }
                     }
                 }
 
