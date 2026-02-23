@@ -9,14 +9,16 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.annotation.OptIn
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -43,7 +45,6 @@ class MainActivity : ComponentActivity() {
         setContent {
             ShadowingPlayerWTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    // الهيكل الأصلي
                     ShadowingScreen(
                         name = "وليد",
                         modifier = Modifier.padding(innerPadding)
@@ -54,12 +55,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// دالة مساعدة لتنسيق الوقت (00:00)
 fun formatTime(ms: Long): String {
     val totalSeconds = ms / 1000
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
-    return String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
+    val millis = (ms % 1000) / 100
+    return String.format(Locale.getDefault(), "%02d:%02d.%d", minutes, seconds, millis)
 }
 
 @OptIn(UnstableApi::class)
@@ -81,11 +82,10 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
         }
     }
 
-    // تحديث موضع التشغيل الحالي لمزامنة السلايدر
     LaunchedEffect(exoPlayer.isPlaying) {
         while (true) {
             currentPlaybackPosition = exoPlayer.currentPosition
-            delay(100)
+            delay(50)
         }
     }
 
@@ -108,13 +108,12 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
     var tempSegmentName by remember { mutableStateOf("") }
     var segmentToEdit by remember { mutableStateOf<VideoSegment?>(null) }
 
-    // منطق التكرار
     LaunchedEffect(currentSegment) {
         while (currentSegment != null) {
             if (exoPlayer.currentPosition >= currentSegment!!.endTimeMs) {
                 exoPlayer.seekTo(currentSegment!!.startTimeMs)
             }
-            delay(100)
+            delay(50)
         }
     }
 
@@ -130,14 +129,12 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // منطقة الفيديو مع عرض الوقت فوقها
         Box(modifier = Modifier.fillMaxWidth().height(200.dp)) {
             AndroidView(
                 factory = { PlayerView(it).apply { player = exoPlayer; useController = true } },
                 modifier = Modifier.fillMaxSize()
             )
 
-            // عرض الوقت الحالي فوق الفيديو
             if (selectedVideoUri != null) {
                 Surface(
                     color = Color.Black.copy(alpha = 0.6f),
@@ -154,18 +151,18 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
             }
         }
 
-        // مؤشر التحديد المتزامن مع تحريك الفيديو
         if (selectedVideoUri != null && videoDuration > 0) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(text = "حدد بداية ونهاية المقطع:", style = MaterialTheme.typography.labelMedium)
+                Text(text = "الضبط الدقيق (0.1 ثانية):", style = MaterialTheme.typography.labelSmall)
 
                 Box(modifier = Modifier.fillMaxWidth().height(40.dp)) {
                     RangeSlider(
                         value = sliderPosition,
                         onValueChange = { newRange ->
-                            // إذا تحرك المؤشر الأول (البداية)، حرك الفيديو معه
                             if (newRange.start != sliderPosition.start) {
                                 exoPlayer.seekTo(newRange.start.toLong())
+                            } else if (newRange.endInclusive != sliderPosition.endInclusive) {
+                                exoPlayer.seekTo(newRange.endInclusive.toLong())
                             }
                             sliderPosition = newRange
                         },
@@ -173,22 +170,47 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
                         modifier = Modifier.fillMaxSize()
                     )
 
-                    // خط أحمر يمثل مكان التشغيل الحالي
                     Canvas(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
                         val progress = currentPlaybackPosition.toFloat() / videoDuration.toFloat()
                         val xPos = size.width * progress
-                        drawLine(
-                            color = Color.Red,
-                            start = Offset(xPos, 0f),
-                            end = Offset(xPos, size.height),
-                            strokeWidth = 2.dp.toPx()
-                        )
+                        drawLine(color = Color.Red, start = Offset(xPos, 0f), end = Offset(xPos, size.height), strokeWidth = 2.dp.toPx())
                     }
                 }
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("البداية: ${formatTime(sliderPosition.start.toLong())}", color = MaterialTheme.colorScheme.primary)
-                    Text("النهاية: ${formatTime(sliderPosition.endInclusive.toLong())}", color = MaterialTheme.colorScheme.secondary)
+                    // تحكم البداية (استبدال Remove بـ KeyboardArrowLeft لضمان التوافق)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = {
+                            val newStart = (sliderPosition.start - 100f).coerceAtLeast(0f)
+                            sliderPosition = newStart..sliderPosition.endInclusive
+                            exoPlayer.seekTo(newStart.toLong())
+                        }) { Icon(Icons.Default.KeyboardArrowLeft, "نقص") }
+
+                        Text(formatTime(sliderPosition.start.toLong()), style = MaterialTheme.typography.bodySmall)
+
+                        IconButton(onClick = {
+                            val newStart = (sliderPosition.start + 100f).coerceAtMost(sliderPosition.endInclusive - 100f)
+                            sliderPosition = newStart..sliderPosition.endInclusive
+                            exoPlayer.seekTo(newStart.toLong())
+                        }) { Icon(Icons.Default.KeyboardArrowRight, "زيادة") }
+                    }
+
+                    // تحكم النهاية
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = {
+                            val newEnd = (sliderPosition.endInclusive - 100f).coerceAtLeast(sliderPosition.start + 100f)
+                            sliderPosition = sliderPosition.start..newEnd
+                            exoPlayer.seekTo(newEnd.toLong())
+                        }) { Icon(Icons.Default.KeyboardArrowLeft, "نقص") }
+
+                        Text(formatTime(sliderPosition.endInclusive.toLong()), style = MaterialTheme.typography.bodySmall)
+
+                        IconButton(onClick = {
+                            val newEnd = (sliderPosition.endInclusive + 100f).coerceAtMost(videoDuration.toFloat())
+                            sliderPosition = sliderPosition.start..newEnd
+                            exoPlayer.seekTo(newEnd.toLong())
+                        }) { Icon(Icons.Default.KeyboardArrowRight, "زيادة") }
+                    }
                 }
 
                 Button(
@@ -196,10 +218,8 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
                         tempSegmentName = "مقطع ${segments.size + 1}"
                         showNamingDialog = true
                     },
-                    modifier = Modifier.align(Alignment.End).padding(top = 8.dp)
-                ) {
-                    Text("حفظ المقطع")
-                }
+                    modifier = Modifier.align(Alignment.End).padding(top = 4.dp)
+                ) { Text("حفظ المقطع") }
             }
         }
 
