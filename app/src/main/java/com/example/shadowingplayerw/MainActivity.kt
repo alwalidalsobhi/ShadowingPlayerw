@@ -8,16 +8,21 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.annotation.OptIn
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -29,6 +34,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.example.shadowingplayerw.ui.theme.ShadowingPlayerWTheme
 import kotlinx.coroutines.delay
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,6 +54,14 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// دالة مساعدة لتنسيق الوقت (00:00)
+fun formatTime(ms: Long): String {
+    val totalSeconds = ms / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
+}
+
 @OptIn(UnstableApi::class)
 @Composable
 fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
@@ -55,6 +69,8 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
 
     var selectedVideoUri by remember { mutableStateOf<Uri?>(null) }
     var videoDuration by remember { mutableLongStateOf(0L) }
+    var currentPlaybackPosition by remember { mutableLongStateOf(0L) }
+
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
             addListener(object : Player.Listener {
@@ -62,6 +78,14 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
                     if (state == Player.STATE_READY) videoDuration = duration
                 }
             })
+        }
+    }
+
+    // تحديث موضع التشغيل الحالي لمزامنة السلايدر
+    LaunchedEffect(exoPlayer.isPlaying) {
+        while (true) {
+            currentPlaybackPosition = exoPlayer.currentPosition
+            delay(100)
         }
     }
 
@@ -76,12 +100,10 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? -> selectedVideoUri = uri }
 
-    // إدارة المقاطع (تكميلية ومفتوحة العدد)
     val segments = remember { mutableStateListOf<VideoSegment>() }
     var currentSegment by remember { mutableStateOf<VideoSegment?>(null) }
     var sliderPosition by remember { mutableStateOf(0f..1000f) }
 
-    // حالات الحوار (Dialog) لتسمية المقطع
     var showNamingDialog by remember { mutableStateOf(false) }
     var tempSegmentName by remember { mutableStateOf("") }
     var segmentToEdit by remember { mutableStateOf<VideoSegment?>(null) }
@@ -108,29 +130,75 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        AndroidView(
-            factory = { PlayerView(it).apply { player = exoPlayer; useController = true } },
-            modifier = Modifier.fillMaxWidth().height(200.dp)
-        )
+        // منطقة الفيديو مع عرض الوقت فوقها
+        Box(modifier = Modifier.fillMaxWidth().height(200.dp)) {
+            AndroidView(
+                factory = { PlayerView(it).apply { player = exoPlayer; useController = true } },
+                modifier = Modifier.fillMaxSize()
+            )
 
-        // مؤشر التحديد (إعادة الضبط والتحكم)
+            // عرض الوقت الحالي فوق الفيديو
+            if (selectedVideoUri != null) {
+                Surface(
+                    color = Color.Black.copy(alpha = 0.6f),
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
+                ) {
+                    Text(
+                        text = formatTime(currentPlaybackPosition),
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
+            }
+        }
+
+        // مؤشر التحديد المتزامن مع تحريك الفيديو
         if (selectedVideoUri != null && videoDuration > 0) {
             Column(modifier = Modifier.padding(16.dp)) {
-                RangeSlider(
-                    value = sliderPosition,
-                    onValueChange = { sliderPosition = it },
-                    valueRange = 0f..videoDuration.toFloat(),
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Text(text = "حدد بداية ونهاية المقطع:", style = MaterialTheme.typography.labelMedium)
+
+                Box(modifier = Modifier.fillMaxWidth().height(40.dp)) {
+                    RangeSlider(
+                        value = sliderPosition,
+                        onValueChange = { newRange ->
+                            // إذا تحرك المؤشر الأول (البداية)، حرك الفيديو معه
+                            if (newRange.start != sliderPosition.start) {
+                                exoPlayer.seekTo(newRange.start.toLong())
+                            }
+                            sliderPosition = newRange
+                        },
+                        valueRange = 0f..videoDuration.toFloat(),
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    // خط أحمر يمثل مكان التشغيل الحالي
+                    Canvas(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
+                        val progress = currentPlaybackPosition.toFloat() / videoDuration.toFloat()
+                        val xPos = size.width * progress
+                        drawLine(
+                            color = Color.Red,
+                            start = Offset(xPos, 0f),
+                            end = Offset(xPos, size.height),
+                            strokeWidth = 2.dp.toPx()
+                        )
+                    }
+                }
+
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("${(sliderPosition.start / 1000).toInt()}s")
-                    Text("${(sliderPosition.endInclusive / 1000).toInt()}s")
-                    Button(onClick = {
+                    Text("البداية: ${formatTime(sliderPosition.start.toLong())}", color = MaterialTheme.colorScheme.primary)
+                    Text("النهاية: ${formatTime(sliderPosition.endInclusive.toLong())}", color = MaterialTheme.colorScheme.secondary)
+                }
+
+                Button(
+                    onClick = {
                         tempSegmentName = "مقطع ${segments.size + 1}"
                         showNamingDialog = true
-                    }) {
-                        Text("حفظ المقطع")
-                    }
+                    },
+                    modifier = Modifier.align(Alignment.End).padding(top = 8.dp)
+                ) {
+                    Text("حفظ المقطع")
                 }
             }
         }
@@ -148,13 +216,13 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(text = segment.name, style = MaterialTheme.typography.bodyLarge)
-                            Text(text = "${segment.startTimeMs/1000}s - ${segment.endTimeMs/1000}s", style = MaterialTheme.typography.bodySmall)
+                            Text(text = "${formatTime(segment.startTimeMs)} - ${formatTime(segment.endTimeMs)}", style = MaterialTheme.typography.bodySmall)
                         }
                         IconButton(onClick = {
                             currentSegment = segment
                             exoPlayer.seekTo(segment.startTimeMs)
                             exoPlayer.play()
-                        }) { Icon(Icons.Default.Edit, contentDescription = "تشغيل") }
+                        }) { Icon(Icons.Default.PlayArrow, contentDescription = "تشغيل") }
 
                         IconButton(onClick = {
                             segmentToEdit = segment
@@ -162,9 +230,10 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
                             showNamingDialog = true
                         }) { Icon(Icons.Default.Edit, "تعديل الاسم") }
 
-                        IconButton(onClick = { segments.remove(segment); if(currentSegment == segment) currentSegment = null }) {
-                            Icon(Icons.Default.Delete, "حذف")
-                        }
+                        IconButton(onClick = {
+                            segments.remove(segment)
+                            if(currentSegment == segment) currentSegment = null
+                        }) { Icon(Icons.Default.Delete, "حذف") }
                     }
                 }
             }
@@ -176,11 +245,10 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
         ) { Text("إيقاف التكرار") }
     }
 
-    // حوار التسمية (Naming/Renaming Dialog)
     if (showNamingDialog) {
         AlertDialog(
             onDismissRequest = { showNamingDialog = false; segmentToEdit = null },
-            title = { Text(if (segmentToEdit == null) "تسمية المقطع الجديد" else "إعادة تسمية المقطع") },
+            title = { Text(if (segmentToEdit == null) "تسمية المقطع" else "تعديل الاسم") },
             text = {
                 TextField(value = tempSegmentName, onValueChange = { tempSegmentName = it }, label = { Text("اسم المقطع") })
             },
