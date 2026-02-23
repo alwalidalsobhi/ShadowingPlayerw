@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -211,7 +212,7 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
     var showTimeInputDialog by remember { mutableStateOf(false) }
     var isEditingStart by remember { mutableStateOf(true) }
 
-    // ⚠️ المطلوب: التحكم في التكرار من الواجهة الرئيسية
+    // التحكم في التكرار من الواجهة الرئيسية
     var isLoopingActive by remember { mutableStateOf(false) }
 
     LaunchedEffect(isLoopingActive, currentPlaybackPosition, sliderPosition) {
@@ -258,67 +259,87 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                         Canvas(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
                             val progress = currentPlaybackPosition.toFloat() / videoDuration.toFloat()
                             val xPos = size.width * progress
-                            drawLine(color = Color.Red, start = Offset(xPos, 0f), end = Offset(xPos, size.height), strokeWidth = 2.dp.toPx())
+                            // ⚠️ تم تحديث لون مؤشر السلايدر ليكون متوافقاً مع M3 (Primary Blue)
+                            drawLine(color = Color(0xFF2196F3), start = Offset(xPos, 0f), end = Offset(xPos, size.height), strokeWidth = 2.dp.toPx())
                         }
                     }
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+
+                    // ⚠️ تحسين تناسق العدادات الثلاثة وتغيير لون العداد الحالي للأزرق
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // عداد البداية (يسار)
+                        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Start) {
                             IconButton(onClick = {
                                 val newStart = (sliderPosition.start - 100f).coerceAtLeast(0f)
                                 sliderPosition = newStart..sliderPosition.endInclusive
                                 exoPlayer.seekTo(newStart.toLong())
-                            }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "نقص", modifier = Modifier.size(20.dp)) }
-                            TextButton(onClick = { isEditingStart = true; showTimeInputDialog = true }) {
+                            }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "نقص", modifier = Modifier.size(18.dp)) }
+                            TextButton(onClick = { isEditingStart = true; showTimeInputDialog = true }, contentPadding = PaddingValues(0.dp)) {
                                 Text(formatTime(sliderPosition.start.toLong()), style = MaterialTheme.typography.bodySmall)
                             }
                             IconButton(onClick = {
                                 val newStart = (sliderPosition.start + 100f).coerceAtMost(sliderPosition.endInclusive - 100f)
                                 sliderPosition = newStart..sliderPosition.endInclusive
                                 exoPlayer.seekTo(newStart.toLong())
-                            }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "زيادة", modifier = Modifier.size(20.dp)) }
+                            }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "زيادة", modifier = Modifier.size(18.dp)) }
                         }
+
+                        // العداد الحالي (منتصف - أزرق)
                         Surface(
-                            color = Color.Red.copy(alpha = 0.1f),
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
                             shape = MaterialTheme.shapes.extraSmall
                         ) {
                             Text(
                                 text = formatTime(currentPlaybackPosition),
-                                color = Color.Red,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                style = MaterialTheme.typography.labelMedium
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelLarge,
+                                textAlign = TextAlign.Center
                             )
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+
+                        // عداد النهاية (يمين)
+                        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End) {
                             IconButton(onClick = {
                                 val newEnd = (sliderPosition.endInclusive - 100f).coerceAtLeast(sliderPosition.start + 100f)
                                 sliderPosition = sliderPosition.start..newEnd
                                 exoPlayer.seekTo(newEnd.toLong())
-                            }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "نقص", modifier = Modifier.size(20.dp)) }
-                            TextButton(onClick = { isEditingStart = false; showTimeInputDialog = true }) {
+                            }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "نقص", modifier = Modifier.size(18.dp)) }
+                            TextButton(onClick = { isEditingStart = false; showTimeInputDialog = true }, contentPadding = PaddingValues(0.dp)) {
                                 Text(formatTime(sliderPosition.endInclusive.toLong()), style = MaterialTheme.typography.bodySmall)
                             }
                             IconButton(onClick = {
                                 val newEnd = (sliderPosition.endInclusive + 100f).coerceAtMost(videoDuration.toFloat())
                                 sliderPosition = sliderPosition.start..newEnd
                                 exoPlayer.seekTo(newEnd.toLong())
-                            }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "زيادة", modifier = Modifier.size(20.dp)) }
+                            }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "زيادة", modifier = Modifier.size(18.dp)) }
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // ⚠️ المطلوب: زر التكرار بجانب الأزرار الرئيسية
-                        FilterChip(
-                            selected = isLoopingActive,
+                        FilledTonalButton(
                             onClick = { isLoopingActive = !isLoopingActive },
-                            label = { Text("تكرار", style = MaterialTheme.typography.labelMedium) },
-                            leadingIcon = if (isLoopingActive) {
-                                { Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                            } else null,
-                            modifier = Modifier.height(32.dp).padding(end = 8.dp)
-                        )
+                            modifier = Modifier.height(32.dp).padding(end = 8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = if (isLoopingActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = if (isLoopingActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("تكرار", style = MaterialTheme.typography.labelMedium)
+                        }
 
                         FilledTonalButton(
                             onClick = { launcher.launch("video/*") },
@@ -327,13 +348,17 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                         ) {
                             Text("تبديل الفيديو", style = MaterialTheme.typography.labelMedium)
                         }
-                        Button(
+
+                        FilledTonalButton(
                             onClick = {
                                 tempSegmentName = "مقطع ${segments.size + 1}"
                                 showNamingDialog = true
                             },
                             modifier = Modifier.height(32.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                            )
                         ) {
                             Text("حفظ المقطع", style = MaterialTheme.typography.labelMedium)
                         }
@@ -376,10 +401,7 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                             Text(text = "${formatTime(segment.startTimeMs)} - ${formatTime(segment.endTimeMs)}", style = MaterialTheme.typography.bodySmall)
                         }
 
-                        // تم إزالة زر الـ Close (إيقاف التكرار) من هنا بناءً على الطلب
-
                         IconButton(onClick = {
-                            // عند الضغط على مقطع، نقوم بتحديث السلايدر وتفعيل التكرار له
                             sliderPosition = segment.startTimeMs.toFloat()..segment.endTimeMs.toFloat()
                             exoPlayer.seekTo(segment.startTimeMs)
                             isLoopingActive = true
