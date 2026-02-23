@@ -79,12 +79,16 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
     var selectedVideoUri by remember { mutableStateOf<Uri?>(null) }
     var videoDuration by remember { mutableLongStateOf(0L) }
     var currentPlaybackPosition by remember { mutableLongStateOf(0L) }
+    var isActuallyPlaying by remember { mutableStateOf(false) }
 
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
                     if (state == Player.STATE_READY) videoDuration = duration
+                }
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    isActuallyPlaying = isPlaying
                 }
             })
         }
@@ -192,7 +196,6 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
                             exoPlayer.seekTo(newStart.toLong())
                         }) { Icon(Icons.Default.KeyboardArrowLeft, "نقص") }
 
-                        // ⚠️ المطلوب: الضغط على المؤقت لفتح عداد الدقائق والثواني
                         TextButton(onClick = {
                             isEditingStart = true
                             showTimeInputDialog = true
@@ -215,7 +218,6 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
                             exoPlayer.seekTo(newEnd.toLong())
                         }) { Icon(Icons.Default.KeyboardArrowLeft, "نقص") }
 
-                        // ⚠️ المطلوب: الضغط على المؤقت لفتح عداد الدقائق والثواني
                         TextButton(onClick = {
                             isEditingStart = false
                             showTimeInputDialog = true
@@ -254,11 +256,23 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
                             Text(text = segment.name, style = MaterialTheme.typography.bodyLarge)
                             Text(text = "${formatTime(segment.startTimeMs)} - ${formatTime(segment.endTimeMs)}", style = MaterialTheme.typography.bodySmall)
                         }
+
+                        // المطلوب: إمكانية الإيقاف المؤقت عند الضغط على المقطع وهو يعمل
                         IconButton(onClick = {
-                            currentSegment = segment
-                            exoPlayer.seekTo(segment.startTimeMs)
-                            exoPlayer.play()
-                        }) { Icon(Icons.Default.PlayArrow, contentDescription = "تشغيل") }
+                            if (currentSegment == segment && isActuallyPlaying) {
+                                exoPlayer.pause()
+                            } else {
+                                currentSegment = segment
+                                exoPlayer.seekTo(segment.startTimeMs)
+                                exoPlayer.play()
+                            }
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = if (currentSegment == segment && isActuallyPlaying) "إيقاف مؤقت" else "تشغيل"
+                            )
+                        }
+
                         IconButton(onClick = {
                             segmentToEdit = segment
                             tempSegmentName = segment.name
@@ -273,7 +287,10 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
             }
         }
         Button(
-            onClick = { currentSegment = null },
+            onClick = {
+                currentSegment = null
+                exoPlayer.pause()
+            },
             modifier = Modifier.align(Alignment.CenterHorizontally).padding(16.dp)
         ) { Text("إيقاف التكرار") }
     }
