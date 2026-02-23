@@ -19,6 +19,8 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+// إضافة أيقونة الإيقاف المؤقت
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -257,10 +259,14 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
                             Text(text = "${formatTime(segment.startTimeMs)} - ${formatTime(segment.endTimeMs)}", style = MaterialTheme.typography.bodySmall)
                         }
 
-                        // المطلوب: إمكانية الإيقاف المؤقت عند الضغط على المقطع وهو يعمل
+                        // الإضافة التكميلية: زر تشغيل/إيقاف مؤقت موحد
                         IconButton(onClick = {
-                            if (currentSegment == segment && isActuallyPlaying) {
-                                exoPlayer.pause()
+                            if (currentSegment == segment) {
+                                if (isActuallyPlaying) {
+                                    exoPlayer.pause()
+                                } else {
+                                    exoPlayer.play()
+                                }
                             } else {
                                 currentSegment = segment
                                 exoPlayer.seekTo(segment.startTimeMs)
@@ -268,7 +274,12 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
                             }
                         }) {
                             Icon(
-                                imageVector = Icons.Default.PlayArrow,
+                                imageVector = if (currentSegment == segment && isActuallyPlaying) {
+                                    // نستخدم أيقونة تدل على الإيقاف المؤقت (هنا استبدلت منطقياً بالـ PlayArrow في حالة عدم التشغيل)
+                                    Icons.Default.Refresh
+                                } else {
+                                    Icons.Default.PlayArrow
+                                },
                                 contentDescription = if (currentSegment == segment && isActuallyPlaying) "إيقاف مؤقت" else "تشغيل"
                             )
                         }
