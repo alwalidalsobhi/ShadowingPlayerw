@@ -14,11 +14,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,7 +38,6 @@ import androidx.media3.ui.PlayerView
 import com.example.shadowingplayerw.ui.theme.ShadowingPlayerWTheme
 import kotlinx.coroutines.delay
 import java.util.Locale
-import kotlin.math.roundToLong
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -61,15 +60,22 @@ fun formatTime(ms: Long): String {
     val totalSeconds = ms / 1000
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
-    val millis = (ms % 1000) / 10
-    return String.format(Locale.getDefault(), "%02d:%02d.%02d", minutes, seconds, millis)
+    val millis = (ms % 1000) / 100
+    return String.format(Locale.getDefault(), "%02d:%02d.%d", minutes, seconds, millis)
+}
+
+// دالة مساعدة لتحويل المدخلات إلى مللي ثانية
+fun timeToMs(min: String, sec: String, msPart: String): Long {
+    val m = min.toLongOrNull() ?: 0L
+    val s = sec.toLongOrNull() ?: 0L
+    val ms = msPart.toLongOrNull() ?: 0L
+    return (m * 60 * 1000) + (s * 1000) + (ms * 100)
 }
 
 @OptIn(UnstableApi::class)
 @Composable
 fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-
     var selectedVideoUri by remember { mutableStateOf<Uri?>(null) }
     var videoDuration by remember { mutableLongStateOf(0L) }
     var currentPlaybackPosition by remember { mutableLongStateOf(0L) }
@@ -84,20 +90,10 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
         }
     }
 
-    var isPrecisionMode by remember { mutableStateOf(false) }
-    var lastInteractionTime by remember { mutableLongStateOf(0L) }
-
-    LaunchedEffect(lastInteractionTime) {
-        if (lastInteractionTime > 0) {
-            delay(2000)
-            isPrecisionMode = true
-        }
-    }
-
     LaunchedEffect(exoPlayer.isPlaying) {
         while (true) {
             currentPlaybackPosition = exoPlayer.currentPosition
-            delay(30)
+            delay(50)
         }
     }
 
@@ -115,26 +111,25 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
     val segments = remember { mutableStateListOf<VideoSegment>() }
     var currentSegment by remember { mutableStateOf<VideoSegment?>(null) }
     var sliderPosition by remember { mutableStateOf(0f..1000f) }
-
     var showNamingDialog by remember { mutableStateOf(false) }
     var tempSegmentName by remember { mutableStateOf("") }
     var segmentToEdit by remember { mutableStateOf<VideoSegment?>(null) }
 
-    var showManualStartDialog by remember { mutableStateOf(false) }
-    var showManualEndDialog by remember { mutableStateOf(false) }
+    // متغيرات ديالوج الوقت اليدوي
+    var showTimeInputDialog by remember { mutableStateOf(false) }
+    var isEditingStart by remember { mutableStateOf(true) }
 
     LaunchedEffect(currentSegment) {
         while (currentSegment != null) {
             if (exoPlayer.currentPosition >= currentSegment!!.endTimeMs) {
                 exoPlayer.seekTo(currentSegment!!.startTimeMs)
             }
-            delay(30)
+            delay(50)
         }
     }
 
     Column(modifier = modifier.fillMaxSize()) {
         Greeting(name = name)
-
         Button(
             onClick = { launcher.launch("video/*") },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
@@ -149,10 +144,9 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
                 factory = { PlayerView(it).apply { player = exoPlayer; useController = true } },
                 modifier = Modifier.fillMaxSize()
             )
-
             if (selectedVideoUri != null) {
                 Surface(
-                    color = if (isPrecisionMode) MaterialTheme.colorScheme.error.copy(alpha = 0.8f) else Color.Black.copy(alpha = 0.6f),
+                    color = Color.Black.copy(alpha = 0.6f),
                     shape = MaterialTheme.shapes.small,
                     modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
                 ) {
@@ -168,87 +162,74 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
 
         if (selectedVideoUri != null && videoDuration > 0) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = if (isPrecisionMode) "وضع التدقيق مفعّل: التحرك الآن بالثانية" else "الضبط الفائق (50ms لكل نقرة):",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (isPrecisionMode) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-                )
-
+                Text(text = "الضبط الدقيق (0.1 ثانية):", style = MaterialTheme.typography.labelSmall)
                 Box(modifier = Modifier.fillMaxWidth().height(40.dp)) {
                     RangeSlider(
                         value = sliderPosition,
                         onValueChange = { newRange ->
-                            lastInteractionTime = System.currentTimeMillis()
-                            var finalRange = newRange
-                            if (isPrecisionMode) {
-                                val snappedStart = (newRange.start / 1000f).roundToLong() * 1000f
-                                val snappedEnd = (newRange.endInclusive / 1000f).roundToLong() * 1000f
-                                finalRange = snappedStart..snappedEnd
+                            if (newRange.start != sliderPosition.start) {
+                                exoPlayer.seekTo(newRange.start.toLong())
+                            } else if (newRange.endInclusive != sliderPosition.endInclusive) {
+                                exoPlayer.seekTo(newRange.endInclusive.toLong())
                             }
-                            if (finalRange.start != sliderPosition.start) {
-                                exoPlayer.seekTo(finalRange.start.toLong())
-                            } else if (finalRange.endInclusive != sliderPosition.endInclusive) {
-                                exoPlayer.seekTo(finalRange.endInclusive.toLong())
-                            }
-                            sliderPosition = finalRange
+                            sliderPosition = newRange
                         },
                         valueRange = 0f..videoDuration.toFloat(),
                         modifier = Modifier.fillMaxSize()
                     )
-
                     Canvas(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
                         val progress = currentPlaybackPosition.toFloat() / videoDuration.toFloat()
                         val xPos = size.width * progress
                         drawLine(color = Color.Red, start = Offset(xPos, 0f), end = Offset(xPos, size.height), strokeWidth = 2.dp.toPx())
                     }
                 }
-
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    // تحكم البداية
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = {
-                            isPrecisionMode = false
-                            val newStart = (sliderPosition.start - 50f).coerceAtLeast(0f)
+                            val newStart = (sliderPosition.start - 100f).coerceAtLeast(0f)
                             sliderPosition = newStart..sliderPosition.endInclusive
                             exoPlayer.seekTo(newStart.toLong())
-                        }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "نقص") }
+                        }) { Icon(Icons.Default.KeyboardArrowLeft, "نقص") }
 
-                        TextButton(onClick = { showManualStartDialog = true }, contentPadding = PaddingValues(0.dp)) {
+                        // ⚠️ المطلوب: الضغط على المؤقت لفتح عداد الدقائق والثواني
+                        TextButton(onClick = {
+                            isEditingStart = true
+                            showTimeInputDialog = true
+                        }) {
                             Text(formatTime(sliderPosition.start.toLong()), style = MaterialTheme.typography.bodySmall)
                         }
 
                         IconButton(onClick = {
-                            isPrecisionMode = false
-                            val newStart = (sliderPosition.start + 50f).coerceAtMost(sliderPosition.endInclusive - 50f)
+                            val newStart = (sliderPosition.start + 100f).coerceAtMost(sliderPosition.endInclusive - 100f)
                             sliderPosition = newStart..sliderPosition.endInclusive
                             exoPlayer.seekTo(newStart.toLong())
-                        }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "زيادة") }
+                        }) { Icon(Icons.Default.KeyboardArrowRight, "زيادة") }
                     }
 
-                    Button(onClick = { isPrecisionMode = !isPrecisionMode }) {
-                        Text(if (isPrecisionMode) "إلغاء التدقيق" else "وضع الـ 1s")
-                    }
-
+                    // تحكم النهاية
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = {
-                            isPrecisionMode = false
-                            val newEnd = (sliderPosition.endInclusive - 50f).coerceAtLeast(sliderPosition.start + 50f)
+                            val newEnd = (sliderPosition.endInclusive - 100f).coerceAtLeast(sliderPosition.start + 100f)
                             sliderPosition = sliderPosition.start..newEnd
                             exoPlayer.seekTo(newEnd.toLong())
-                        }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "نقص") }
+                        }) { Icon(Icons.Default.KeyboardArrowLeft, "نقص") }
 
-                        TextButton(onClick = { showManualEndDialog = true }, contentPadding = PaddingValues(0.dp)) {
+                        // ⚠️ المطلوب: الضغط على المؤقت لفتح عداد الدقائق والثواني
+                        TextButton(onClick = {
+                            isEditingStart = false
+                            showTimeInputDialog = true
+                        }) {
                             Text(formatTime(sliderPosition.endInclusive.toLong()), style = MaterialTheme.typography.bodySmall)
                         }
 
                         IconButton(onClick = {
-                            isPrecisionMode = false
-                            val newEnd = (sliderPosition.endInclusive + 50f).coerceAtMost(videoDuration.toFloat())
+                            val newEnd = (sliderPosition.endInclusive + 100f).coerceAtMost(videoDuration.toFloat())
                             sliderPosition = sliderPosition.start..newEnd
                             exoPlayer.seekTo(newEnd.toLong())
-                        }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "زيادة") }
+                        }) { Icon(Icons.Default.KeyboardArrowRight, "زيادة") }
                     }
                 }
-
                 Button(
                     onClick = {
                         tempSegmentName = "مقطع ${segments.size + 1}"
@@ -260,7 +241,6 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
         }
 
         Text(text = "قائمة التدريب:", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp))
-
         LazyColumn(modifier = Modifier.weight(1f)) {
             items(segments) { segment ->
                 Card(
@@ -279,13 +259,11 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
                             exoPlayer.seekTo(segment.startTimeMs)
                             exoPlayer.play()
                         }) { Icon(Icons.Default.PlayArrow, contentDescription = "تشغيل") }
-
                         IconButton(onClick = {
                             segmentToEdit = segment
                             tempSegmentName = segment.name
                             showNamingDialog = true
                         }) { Icon(Icons.Default.Edit, "تعديل الاسم") }
-
                         IconButton(onClick = {
                             segments.remove(segment)
                             if(currentSegment == segment) currentSegment = null
@@ -294,18 +272,74 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
                 }
             }
         }
-
         Button(
             onClick = { currentSegment = null },
             modifier = Modifier.align(Alignment.CenterHorizontally).padding(16.dp)
         ) { Text("إيقاف التكرار") }
     }
 
+    // ديالوج إدخال الوقت يدوياً
+    if (showTimeInputDialog) {
+        var min by remember { mutableStateOf("0") }
+        var sec by remember { mutableStateOf("0") }
+        var msp by remember { mutableStateOf("0") }
+
+        AlertDialog(
+            onDismissRequest = { showTimeInputDialog = false },
+            title = { Text(if (isEditingStart) "ضبط وقت البداية" else "ضبط وقت النهاية") },
+            text = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = min,
+                        onValueChange = { if (it.length <= 2) min = it },
+                        label = { Text("دقائق") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    OutlinedTextField(
+                        value = sec,
+                        onValueChange = { if (it.length <= 2) sec = it },
+                        label = { Text("ثواني") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    OutlinedTextField(
+                        value = msp,
+                        onValueChange = { if (it.length <= 1) msp = it },
+                        label = { Text("0.1ث") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val newMs = timeToMs(min, sec, msp).toFloat()
+                    if (isEditingStart) {
+                        val validatedStart = newMs.coerceIn(0f, sliderPosition.endInclusive - 100f)
+                        sliderPosition = validatedStart..sliderPosition.endInclusive
+                        exoPlayer.seekTo(validatedStart.toLong())
+                    } else {
+                        val validatedEnd = newMs.coerceIn(sliderPosition.start + 100f, videoDuration.toFloat())
+                        sliderPosition = sliderPosition.start..validatedEnd
+                        exoPlayer.seekTo(validatedEnd.toLong())
+                    }
+                    showTimeInputDialog = false
+                }) { Text("تطبيق") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimeInputDialog = false }) { Text("إلغاء") }
+            }
+        )
+    }
+
     if (showNamingDialog) {
         AlertDialog(
             onDismissRequest = { showNamingDialog = false; segmentToEdit = null },
             title = { Text(if (segmentToEdit == null) "تسمية المقطع" else "تعديل الاسم") },
-            text = { TextField(value = tempSegmentName, onValueChange = { tempSegmentName = it }, label = { Text("اسم المقطع") }) },
+            text = {
+                TextField(value = tempSegmentName, onValueChange = { tempSegmentName = it }, label = { Text("اسم المقطع") })
+            },
             confirmButton = {
                 Button(onClick = {
                     if (segmentToEdit == null) {
@@ -320,64 +354,7 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
             }
         )
     }
-
-    if (showManualStartDialog) {
-        ManualTimeInputDialog(
-            currentValue = sliderPosition.start.toLong(),
-            onDismiss = { showManualStartDialog = false },
-            onConfirm = { newTime ->
-                val validatedTime = newTime.coerceIn(0L, sliderPosition.endInclusive.toLong() - 100L)
-                sliderPosition = validatedTime.toFloat()..sliderPosition.endInclusive
-                exoPlayer.seekTo(validatedTime)
-                showManualStartDialog = false
-            },
-            title = "تعديل وقت البداية (ms)"
-        )
-    }
-
-    if (showManualEndDialog) {
-        ManualTimeInputDialog(
-            currentValue = sliderPosition.endInclusive.toLong(),
-            onDismiss = { showManualEndDialog = false },
-            onConfirm = { newTime ->
-                val validatedTime = newTime.coerceIn(sliderPosition.start.toLong() + 100L, videoDuration)
-                sliderPosition = sliderPosition.start..validatedTime.toFloat()
-                exoPlayer.seekTo(validatedTime)
-                showManualEndDialog = false
-            },
-            title = "تعديل وقت النهاية (ms)"
-        )
-    }
-
     DisposableEffect(Unit) { onDispose { exoPlayer.release() } }
-}
-
-@Composable
-fun ManualTimeInputDialog(
-    currentValue: Long,
-    onDismiss: () -> Unit,
-    onConfirm: (Long) -> Unit,
-    title: String
-) {
-    var textValue by remember { mutableStateOf(currentValue.toString()) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            TextField(
-                value = textValue,
-                onValueChange = { if (it.all { char -> char.isDigit() }) textValue = it },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                label = { Text("أدخل القيمة بالملي ثانية") }
-            )
-        },
-        confirmButton = {
-            Button(onClick = { onConfirm(textValue.toLongOrNull() ?: currentValue) }) { Text("تطبيق") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("إلغاء") }
-        }
-    )
 }
 
 @Composable
