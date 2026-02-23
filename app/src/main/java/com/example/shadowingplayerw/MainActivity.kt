@@ -16,6 +16,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Close // أيقونة إيقاف التكرار
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
@@ -130,7 +131,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
     }
 
     Column(modifier = modifier.fillMaxSize()) {
-        // 1. الفيديو في أعلى الصفحة مباشرة
         Box(modifier = Modifier.fillMaxWidth().height(220.dp)) {
             AndroidView(
                 factory = { PlayerView(it).apply { player = exoPlayer; useController = true } },
@@ -152,23 +152,7 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        // 2. صف يحتوي على زر تصغير "تغيير الفيديو" وتنسيق M3
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(8.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            FilledTonalButton(
-                onClick = { launcher.launch("video/*") },
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
-                modifier = Modifier.height(32.dp) // تصغير الارتفاع لكسب مساحة
-            ) {
-                Text(
-                    if (selectedVideoUri == null) "فتح فيديو" else "تبديل الفيديو",
-                    style = MaterialTheme.typography.labelMedium
-                )
-            }
-        }
+        // تم حذف الصف القديم لزر تبديل الفيديو المنفرد هنا
 
         if (selectedVideoUri != null && videoDuration > 0) {
             Card(
@@ -234,14 +218,39 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                             }) { Icon(Icons.Default.KeyboardArrowRight, "زيادة", modifier = Modifier.size(20.dp)) }
                         }
                     }
-                    Button(
-                        onClick = {
-                            tempSegmentName = "مقطع ${segments.size + 1}"
-                            showNamingDialog = true
-                        },
-                        modifier = Modifier.align(Alignment.End).height(32.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
-                    ) { Text("حفظ المقطع", style = MaterialTheme.typography.labelMedium) }
+
+                    // ⚠️ المطلوب 1: وضع تبديل الفيديو بجوار حفظ المقطع
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        FilledTonalButton(
+                            onClick = { launcher.launch("video/*") },
+                            modifier = Modifier.height(32.dp).padding(end = 8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                        ) {
+                            Text("تبديل الفيديو", style = MaterialTheme.typography.labelMedium)
+                        }
+
+                        Button(
+                            onClick = {
+                                tempSegmentName = "مقطع ${segments.size + 1}"
+                                showNamingDialog = true
+                            },
+                            modifier = Modifier.height(32.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                        ) {
+                            Text("حفظ المقطع", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                }
+            }
+        } else if (selectedVideoUri == null) {
+            // زر فتح فيديو في حالة عدم وجود فيديو
+            Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                Button(onClick = { launcher.launch("video/*") }) {
+                    Text("فتح فيديو من الهاتف")
                 }
             }
         }
@@ -260,6 +269,16 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(text = segment.name, style = MaterialTheme.typography.bodyLarge)
                             Text(text = "${formatTime(segment.startTimeMs)} - ${formatTime(segment.endTimeMs)}", style = MaterialTheme.typography.bodySmall)
+                        }
+
+                        // المطلوب 2: زر إيقاف التكرار بجوار كل مقطع
+                        if (currentSegment == segment) {
+                            IconButton(onClick = {
+                                currentSegment = null
+                                exoPlayer.pause()
+                            }) {
+                                Icon(Icons.Default.Close, "إيقاف التكرار", tint = MaterialTheme.colorScheme.error)
+                            }
                         }
 
                         IconButton(onClick = {
@@ -296,10 +315,7 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        OutlinedButton(
-            onClick = { currentSegment = null; exoPlayer.pause() },
-            modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 16.dp).height(36.dp)
-        ) { Text("إيقاف التكرار", style = MaterialTheme.typography.labelLarge) }
+        // تم حذف زر إيقاف التكرار السفلي الكبير لكسب مساحة واستبداله بالأيقونة داخل العناصر
     }
 
     if (showTimeInputDialog) {
