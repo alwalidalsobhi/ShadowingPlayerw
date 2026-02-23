@@ -37,6 +37,7 @@ import androidx.media3.ui.PlayerView
 import com.example.shadowingplayerw.ui.theme.ShadowingPlayerWTheme
 import kotlinx.coroutines.delay
 import java.util.Locale
+import kotlin.math.roundToLong
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -59,7 +60,7 @@ fun formatTime(ms: Long): String {
     val totalSeconds = ms / 1000
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
-    val millis = (ms % 1000) / 10 // عرض تفصيلي أكثر (جزء من مئة)
+    val millis = (ms % 1000) / 10
     return String.format(Locale.getDefault(), "%02d:%02d.%02d", minutes, seconds, millis)
 }
 
@@ -82,10 +83,21 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
         }
     }
 
+    // منطق وضع الدقة العالية (ثانية واحدة)
+    var isPrecisionMode by remember { mutableStateOf(false) }
+    var lastInteractionTime by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(lastInteractionTime) {
+        if (lastInteractionTime > 0) {
+            delay(2000) // الانتظار لمدة ثانيتين
+            isPrecisionMode = true
+        }
+    }
+
     LaunchedEffect(exoPlayer.isPlaying) {
         while (true) {
             currentPlaybackPosition = exoPlayer.currentPosition
-            delay(30) // تقليل وقت التحديث لمواكبة السرعة الجديدة
+            delay(30)
         }
     }
 
@@ -129,6 +141,7 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
 
         Spacer(modifier = Modifier.height(8.dp))
 
+        // منطقة الفيديو مع عرض التوقيت الحالي
         Box(modifier = Modifier.fillMaxWidth().height(200.dp)) {
             AndroidView(
                 factory = { PlayerView(it).apply { player = exoPlayer; useController = true } },
@@ -136,35 +149,53 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
             )
 
             if (selectedVideoUri != null) {
+                // عرض التوقيت الحالي للقطة فوق الفيديو
                 Surface(
-                    color = Color.Black.copy(alpha = 0.6f),
+                    color = if (isPrecisionMode) MaterialTheme.colorScheme.error.copy(alpha = 0.8f) else Color.Black.copy(alpha = 0.6f),
                     shape = MaterialTheme.shapes.small,
                     modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
                 ) {
-                    Text(
-                        text = formatTime(currentPlaybackPosition),
-                        color = Color.White,
+                    Row(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelLarge
-                    )
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = formatTime(currentPlaybackPosition),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
                 }
             }
         }
 
         if (selectedVideoUri != null && videoDuration > 0) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(text = "الضبط الفائق (50ms لكل نقرة):", style = MaterialTheme.typography.labelSmall)
+                Text(
+                    text = if (isPrecisionMode) "وضع التدقيق مفعّل: التحرك الآن بالثانية" else "الضبط الفائق (50ms لكل نقرة):",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (isPrecisionMode) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                )
 
                 Box(modifier = Modifier.fillMaxWidth().height(40.dp)) {
                     RangeSlider(
                         value = sliderPosition,
                         onValueChange = { newRange ->
-                            if (newRange.start != sliderPosition.start) {
-                                exoPlayer.seekTo(newRange.start.toLong())
-                            } else if (newRange.endInclusive != sliderPosition.endInclusive) {
-                                exoPlayer.seekTo(newRange.endInclusive.toLong())
+                            lastInteractionTime = System.currentTimeMillis()
+
+                            var finalRange = newRange
+                            if (isPrecisionMode) {
+                                val snappedStart = (newRange.start / 1000f).roundToLong() * 1000f
+                                val snappedEnd = (newRange.endInclusive / 1000f).roundToLong() * 1000f
+                                finalRange = snappedStart..snappedEnd
                             }
-                            sliderPosition = newRange
+
+                            if (finalRange.start != sliderPosition.start) {
+                                exoPlayer.seekTo(finalRange.start.toLong())
+                            } else if (finalRange.endInclusive != sliderPosition.endInclusive) {
+                                exoPlayer.seekTo(finalRange.endInclusive.toLong())
+                            }
+                            sliderPosition = finalRange
                         },
                         valueRange = 0f..videoDuration.toFloat(),
                         modifier = Modifier.fillMaxSize()
@@ -178,38 +209,44 @@ fun ShadowingScreen(name: String, modifier: Modifier = Modifier) {
                 }
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    // تحكم البداية (تعديل القفزة إلى 50ms)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = {
+                            isPrecisionMode = false
                             val newStart = (sliderPosition.start - 50f).coerceAtLeast(0f)
                             sliderPosition = newStart..sliderPosition.endInclusive
                             exoPlayer.seekTo(newStart.toLong())
-                        }) { Icon(Icons.Default.KeyboardArrowLeft, "نقص 50ms") }
+                        }) { Icon(Icons.Default.KeyboardArrowLeft, "نقص") }
 
                         Text(formatTime(sliderPosition.start.toLong()), style = MaterialTheme.typography.bodySmall)
 
                         IconButton(onClick = {
+                            isPrecisionMode = false
                             val newStart = (sliderPosition.start + 50f).coerceAtMost(sliderPosition.endInclusive - 50f)
                             sliderPosition = newStart..sliderPosition.endInclusive
                             exoPlayer.seekTo(newStart.toLong())
-                        }) { Icon(Icons.Default.KeyboardArrowRight, "زيادة 50ms") }
+                        }) { Icon(Icons.Default.KeyboardArrowRight, "زيادة") }
                     }
 
-                    // تحكم النهاية (تعديل القفزة إلى 50ms)
+                    Button(onClick = { isPrecisionMode = !isPrecisionMode }) {
+                        Text(if (isPrecisionMode) "إلغاء التدقيق" else "وضع الـ 1s")
+                    }
+
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = {
+                            isPrecisionMode = false
                             val newEnd = (sliderPosition.endInclusive - 50f).coerceAtLeast(sliderPosition.start + 50f)
                             sliderPosition = sliderPosition.start..newEnd
                             exoPlayer.seekTo(newEnd.toLong())
-                        }) { Icon(Icons.Default.KeyboardArrowLeft, "نقص 50ms") }
+                        }) { Icon(Icons.Default.KeyboardArrowLeft, "نقص") }
 
                         Text(formatTime(sliderPosition.endInclusive.toLong()), style = MaterialTheme.typography.bodySmall)
 
                         IconButton(onClick = {
+                            isPrecisionMode = false
                             val newEnd = (sliderPosition.endInclusive + 50f).coerceAtMost(videoDuration.toFloat())
                             sliderPosition = sliderPosition.start..newEnd
                             exoPlayer.seekTo(newEnd.toLong())
-                        }) { Icon(Icons.Default.KeyboardArrowRight, "زيادة 50ms") }
+                        }) { Icon(Icons.Default.KeyboardArrowRight, "زيادة") }
                     }
                 }
 
