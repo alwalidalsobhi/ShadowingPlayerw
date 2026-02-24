@@ -23,7 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -212,7 +213,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
     var showTimeInputDialog by remember { mutableStateOf(false) }
     var isEditingStart by remember { mutableStateOf(true) }
 
-    // التحكم في التكرار من الواجهة الرئيسية
     var isLoopingActive by remember { mutableStateOf(false) }
 
     LaunchedEffect(isLoopingActive, currentPlaybackPosition, sliderPosition) {
@@ -259,18 +259,15 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                         Canvas(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
                             val progress = currentPlaybackPosition.toFloat() / videoDuration.toFloat()
                             val xPos = size.width * progress
-                            // ⚠️ تم تحديث لون مؤشر السلايدر ليكون متوافقاً مع M3 (Primary Blue)
                             drawLine(color = Color(0xFF2196F3), start = Offset(xPos, 0f), end = Offset(xPos, size.height), strokeWidth = 2.dp.toPx())
                         }
                     }
 
-                    // ⚠️ تحسين تناسق العدادات الثلاثة وتغيير لون العداد الحالي للأزرق
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // عداد البداية (يسار)
                         Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Start) {
                             IconButton(onClick = {
                                 val newStart = (sliderPosition.start - 100f).coerceAtLeast(0f)
@@ -287,7 +284,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                             }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "زيادة", modifier = Modifier.size(18.dp)) }
                         }
 
-                        // العداد الحالي (منتصف - أزرق)
                         Surface(
                             modifier = Modifier.padding(horizontal = 4.dp),
                             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
@@ -302,7 +298,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                             )
                         }
 
-                        // عداد النهاية (يمين)
                         Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End) {
                             IconButton(onClick = {
                                 val newEnd = (sliderPosition.endInclusive - 100f).coerceAtLeast(sliderPosition.start + 100f)
@@ -375,10 +370,13 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
         Text(text = "قائمة التدريب:", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         LazyColumn(modifier = Modifier.weight(1f)) {
             items(segments) { segment ->
+                val isThisSegmentSelected = currentSegment == segment
+                val isThisSegmentPlaying = isThisSegmentSelected && isActuallyPlaying
+
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = if (currentSegment == segment) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+                        containerColor = if (isThisSegmentSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
                     )
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
@@ -401,22 +399,38 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                             Text(text = "${formatTime(segment.startTimeMs)} - ${formatTime(segment.endTimeMs)}", style = MaterialTheme.typography.bodySmall)
                         }
 
-                        IconButton(onClick = {
-                            sliderPosition = segment.startTimeMs.toFloat()..segment.endTimeMs.toFloat()
-                            exoPlayer.seekTo(segment.startTimeMs)
-                            isLoopingActive = true
-                            exoPlayer.play()
-                        }) {
+                        FilledTonalIconButton(
+                            onClick = {
+                                if (isThisSegmentPlaying) {
+                                    exoPlayer.pause()
+                                    // لا نلغي Loop هنا لكي يظل المستخدم "داخل" نطاق المقطع
+                                } else {
+                                    // إذا كان مقطعاً مختلفاً، نقوم بالتبديل الكامل
+                                    if (!isThisSegmentSelected) {
+                                        currentSegment = segment
+                                        sliderPosition = segment.startTimeMs.toFloat()..segment.endTimeMs.toFloat()
+                                        exoPlayer.seekTo(segment.startTimeMs)
+                                    }
+                                    isLoopingActive = true
+                                    exoPlayer.play()
+                                }
+                            },
+                            modifier = Modifier.size(40.dp),
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = if (isThisSegmentPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = if (isThisSegmentPlaying) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        ) {
                             Icon(
-                                painter = androidx.compose.ui.res.painterResource(
-                                    id = if (isLoopingActive && currentPlaybackPosition >= segment.startTimeMs && currentPlaybackPosition <= segment.endTimeMs && isActuallyPlaying)
-                                        android.R.drawable.ic_media_pause
-                                    else
-                                        android.R.drawable.ic_media_play
-                                ),
-                                contentDescription = "تشغيل/إيقاف"
+                                painter = if (isThisSegmentPlaying)
+                                    painterResource(id = android.R.drawable.ic_media_pause)
+                                else
+                                    painterResource(id = android.R.drawable.ic_media_play),
+                                contentDescription = "تشغيل/إيقاف",
+                                modifier = Modifier.size(20.dp)
                             )
                         }
+
                         IconButton(onClick = {
                             segmentToEdit = segment
                             tempSegmentName = segment.name
@@ -425,6 +439,7 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                         IconButton(onClick = {
                             segment.thumbnailPath?.let { File(it).delete() }
                             segments.remove(segment)
+                            if (currentSegment == segment) currentSegment = null
                             saveSegments()
                         }) { Icon(Icons.Default.Delete, "حذف", modifier = Modifier.size(20.dp)) }
                     }
