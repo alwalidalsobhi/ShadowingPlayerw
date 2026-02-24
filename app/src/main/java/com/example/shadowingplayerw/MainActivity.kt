@@ -155,11 +155,9 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
         } else emptyList()
         mutableStateListOf<VideoSegment>().apply { addAll(list) }
     }
-
     fun saveSegments() {
         sharedPrefs.edit().putString(KEY_SEGMENTS, gson.toJson(segments.toList())).apply()
     }
-
     var videoDuration by remember { mutableLongStateOf(0L) }
     var currentPlaybackPosition by remember { mutableLongStateOf(0L) }
     var isActuallyPlaying by remember { mutableStateOf(false) }
@@ -176,21 +174,18 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
             })
         }
     }
-
     LaunchedEffect(exoPlayer.isPlaying) {
         while (true) {
             currentPlaybackPosition = exoPlayer.currentPosition
             delay(50)
         }
     }
-
     LaunchedEffect(selectedVideoUri) {
         selectedVideoUri?.let { uri ->
             exoPlayer.setMediaItem(MediaItem.fromUri(uri))
             exoPlayer.prepare()
         }
     }
-
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -204,7 +199,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
             }
         }
     }
-
     var currentSegment by remember { mutableStateOf<VideoSegment?>(null) }
     var sliderPosition by remember { mutableStateOf(0f..1000f) }
     var showNamingDialog by remember { mutableStateOf(false) }
@@ -212,9 +206,7 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
     var segmentToEdit by remember { mutableStateOf<VideoSegment?>(null) }
     var showTimeInputDialog by remember { mutableStateOf(false) }
     var isEditingStart by remember { mutableStateOf(true) }
-
     var isLoopingActive by remember { mutableStateOf(false) }
-
     LaunchedEffect(isLoopingActive, currentPlaybackPosition, sliderPosition) {
         if (isLoopingActive) {
             if (currentPlaybackPosition >= sliderPosition.endInclusive.toLong() || currentPlaybackPosition < sliderPosition.start.toLong()) {
@@ -222,19 +214,32 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
             }
         }
     }
-
     Column(modifier = modifier.fillMaxSize()) {
-        Box(modifier = Modifier.fillMaxWidth().height(220.dp)) {
-            AndroidView(
-                factory = { PlayerView(it).apply { player = exoPlayer; useController = true } },
-                modifier = Modifier.fillMaxSize()
-            )
-            if (isCopying) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+        // --- تعديل: وضع الفيديو داخل بطاقة (Card) لتحقيق التناسق البصري ---
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(240.dp)
+                .padding(16.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                AndroidView(
+                    factory = { PlayerView(it).apply { player = exoPlayer; useController = true } },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(12.dp))
+                )
+                if (isCopying) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    }
                 }
             }
         }
+
         if (selectedVideoUri != null && videoDuration > 0) {
             Card(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
@@ -262,7 +267,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                             drawLine(color = Color(0xFF2196F3), start = Offset(xPos, 0f), end = Offset(xPos, size.height), strokeWidth = 2.dp.toPx())
                         }
                     }
-
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -283,7 +287,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                                 exoPlayer.seekTo(newStart.toLong())
                             }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "زيادة", modifier = Modifier.size(18.dp)) }
                         }
-
                         Surface(
                             modifier = Modifier.padding(horizontal = 4.dp),
                             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
@@ -297,7 +300,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                                 textAlign = TextAlign.Center
                             )
                         }
-
                         Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End) {
                             IconButton(onClick = {
                                 val newEnd = (sliderPosition.endInclusive - 100f).coerceAtLeast(sliderPosition.start + 100f)
@@ -314,9 +316,7 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                             }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "زيادة", modifier = Modifier.size(18.dp)) }
                         }
                     }
-
                     Spacer(modifier = Modifier.height(8.dp))
-
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.End,
@@ -328,14 +328,12 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                             colors = ButtonDefaults.filledTonalButtonColors(
                                 containerColor = if (isLoopingActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = if (isLoopingActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer
-                            )
+                                contentColor = if (isLoopingActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer                             )
                         ) {
                             Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
                             Text("تكرار", style = MaterialTheme.typography.labelMedium)
                         }
-
                         FilledTonalButton(
                             onClick = { launcher.launch("video/*") },
                             modifier = Modifier.height(32.dp).padding(end = 8.dp),
@@ -343,7 +341,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                         ) {
                             Text("تبديل الفيديو", style = MaterialTheme.typography.labelMedium)
                         }
-
                         FilledTonalButton(
                             onClick = {
                                 tempSegmentName = "مقطع ${segments.size + 1}"
@@ -372,7 +369,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
             items(segments) { segment ->
                 val isThisSegmentSelected = currentSegment == segment
                 val isThisSegmentPlaying = isThisSegmentSelected && isActuallyPlaying
-
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     colors = CardDefaults.cardColors(
@@ -398,14 +394,11 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                             Text(text = segment.name, style = MaterialTheme.typography.bodyLarge)
                             Text(text = "${formatTime(segment.startTimeMs)} - ${formatTime(segment.endTimeMs)}", style = MaterialTheme.typography.bodySmall)
                         }
-
                         FilledTonalIconButton(
                             onClick = {
                                 if (isThisSegmentPlaying) {
                                     exoPlayer.pause()
-                                    // لا نلغي Loop هنا لكي يظل المستخدم "داخل" نطاق المقطع
                                 } else {
-                                    // إذا كان مقطعاً مختلفاً، نقوم بالتبديل الكامل
                                     if (!isThisSegmentSelected) {
                                         currentSegment = segment
                                         sliderPosition = segment.startTimeMs.toFloat()..segment.endTimeMs.toFloat()
@@ -430,7 +423,6 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                                 modifier = Modifier.size(20.dp)
                             )
                         }
-
                         IconButton(onClick = {
                             segmentToEdit = segment
                             tempSegmentName = segment.name
