@@ -45,6 +45,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.example.shadowingplayerw.ui.theme.ShadowingPlayerWTheme
 import com.google.gson.Gson
@@ -215,22 +216,26 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
         }
     }
     Column(modifier = modifier.fillMaxSize()) {
-        // --- تعديل: وضع الفيديو داخل بطاقة (Card) لتحقيق التناسق البصري ---
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(240.dp)
-                .padding(16.dp),
+                .height(210.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            colors = CardDefaults.cardColors(containerColor = Color.Black),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 AndroidView(
-                    factory = { PlayerView(it).apply { player = exoPlayer; useController = true } },
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(12.dp))
+                    factory = {
+                        PlayerView(it).apply {
+                            player = exoPlayer
+                            useController = true
+                            // تم تغيير RESIZE_MODE_FIT إلى RESIZE_MODE_ZOOM لإزالة السواد
+                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
                 )
                 if (isCopying) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -394,7 +399,7 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                             Text(text = segment.name, style = MaterialTheme.typography.bodyLarge)
                             Text(text = "${formatTime(segment.startTimeMs)} - ${formatTime(segment.endTimeMs)}", style = MaterialTheme.typography.bodySmall)
                         }
-                        FilledTonalIconButton(
+                        IconButton(
                             onClick = {
                                 if (isThisSegmentPlaying) {
                                     exoPlayer.pause()
@@ -408,11 +413,7 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                                     exoPlayer.play()
                                 }
                             },
-                            modifier = Modifier.size(40.dp),
-                            colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                containerColor = if (isThisSegmentPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = if (isThisSegmentPlaying) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer
-                            )
+                            modifier = Modifier.size(40.dp)
                         ) {
                             Icon(
                                 painter = if (isThisSegmentPlaying)
@@ -420,7 +421,8 @@ fun ShadowingScreen(modifier: Modifier = Modifier) {
                                 else
                                     painterResource(id = android.R.drawable.ic_media_play),
                                 contentDescription = "تشغيل/إيقاف",
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(24.dp),
+                                tint = if (isThisSegmentPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         IconButton(onClick = {
